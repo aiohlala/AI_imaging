@@ -137,6 +137,10 @@ export default function MaskEditor({ image, maskCanvas, onProcess, onBack }: Mas
   }, [redrawOverlay])
 
   /** 將 pointer 事件的 client 座標換算成原圖解析度座標 */
+  const [drawMode, setDrawMode] = useState<'brush' | 'rect'>('brush')
+  const startPointRef = useRef<Point | null>(null)
+  const currentDragPointRef = useRef<Point | null>(null)
+
   const toImageCoords = (e: React.PointerEvent): Point | null => {
     const overlay = overlayCanvasRef.current
     if (!overlay) return null
@@ -154,6 +158,13 @@ export default function MaskEditor({ image, maskCanvas, onProcess, onBack }: Mas
     e.preventDefault()
     ;(e.target as Element).setPointerCapture(e.pointerId)
     drawingRef.current = true
+
+    if (drawMode === 'rect') {
+      startPointRef.current = p
+      currentDragPointRef.current = p
+      return
+    }
+
     const stroke: Stroke = { points: [p], radius: brushSize / 2, erase: eraser }
     currentStrokeRef.current = stroke
     lastPointRef.current = p
@@ -165,23 +176,56 @@ export default function MaskEditor({ image, maskCanvas, onProcess, onBack }: Mas
 
   const onPointerMove = (e: React.PointerEvent) => {
     if (!drawingRef.current) return
+    const p = toImageCoords(e)
+    if (!p) return
+
+    if (drawMode === 'rect') {
+      currentDragPointRef.current = p
+      // 繪製即時預覽虛線框
+      redrawOverlay()
+      const overlay = overlayCanvasRef.current
+      if (overlay && startPointRef.current) {
+        const ctx = overlay.getContext('2d')!
+        const rect = overlay.getBoundingClientRect()
+        const scaleX = rect.width / imgW
+        const scaleY = rect.height / imgH
+        const sx = startPointRef.current.x * scaleX
+        const sy = startPointRef.current.y * scaleY
+        const ex = p.x * scaleX
+        const ey = p.y * scaleY
+        ctx.save()
+        ctx.strokeStyle = '#4f8cff'
+        ctx.lineWidth = 2
+        ctx.setLineDash([4, 4])
+        ctx.fillStyle = 'rgba(79, 140, 255, 0.25)'
+        const rx = Math.min(sx, ex)
+        const ry = Math.min(sy, ey)
+        const rw = Math.abs(ex - sx)
+        const rh = Math.abs(ey - sy)
+        ctx.fillRect(rx, ry, rw, rh)
+        ctx.strokeRect(rx, ry, rw, rh)
+        ctx.restore()
+      }
+      return
+    }
+
     const stroke = currentStrokeRef.current
     const last = lastPointRef.current
     if (!stroke || !last) return
-    // 觸控裝置可取用 coalesced events，讓快速滑動更平滑
+
     const events = e.nativeEvent.getCoalescedEvents?.() ?? [e.nativeEvent]
     const ctx = maskCanvas.getContext('2d')!
     let prev = last
     for (const ev of events) {
       const rect = overlayCanvasRef.current!.getBoundingClientRect()
-      const p: Point = {
+      const pt: Point = {
         x: ((ev.clientX - rect.left) / rect.width) * imgW,
         y: ((ev.clientY - rect.top) / rect.height) * imgH,
       }
-      const segment: Stroke = { points: [prev, p], radius: stroke.radius, erase: stroke.erase }
+      const segment: Stroke = { points: [prev, pt], radius: stroke.radius, erase: stroke.erase }
       drawStroke(ctx, segment)
-      stroke.points.push(p)
-      prev = p
+      stroke.points.push(pt)
+      prev = pt
     }
     lastPointRef.current = prev
     redrawOverlay()
@@ -190,12 +234,50 @@ export default function MaskEditor({ image, maskCanvas, onProcess, onBack }: Mas
   const finishStroke = () => {
     if (!drawingRef.current) return
     drawingRef.current = false
+
+    if (drawMode === 'rect' && startPointRef.current && currentDragPointRef.current) {
+      const sp = startPointRef.current
+      const ep = currentDragPointRef.current
+      const x = Math.min(sp.x, ep.x)
+      const y = Math.min(sp.y, ep.y)
+      const w = Math.abs(sp.x - ep.x)
+      const h = Math.abs(sp.y - ep.y)
+
+      if (w > 2 && h > 2) {
+        const ctx = maskCanvas.getContext('2d')!
+        ctx.save()
+        ctx.globalCompositeOperation = eraser ? 'destination-out' : 'source-over'
+        ctx.fillStyle = '#fff'
+        ctx.fillRect(x, y, w, h)
+        ctx.restore()
+
+        // 轉換為四個頂點構成的 stroke 以支援 undo
+        const rectStroke: Stroke = {
+          points: [
+            { x, y },
+            { x: x + w, y },
+            { x: x + w, y: y + h },
+            { x, y: y + h },
+            { x, y },
+          ],
+          radius: Math.max(w, h) / 2,
+          erase: eraser,
+        }
+        strokesRef.current.push(rectStroke)
+        setStrokeCount(strokesRef.current.length)
+        setHasMask(true)
+      }
+      startPointRef.current = null
+      currentDragPointRef.current = null
+      redrawOverlay()
+      return
+    }
+
     const stroke = currentStrokeRef.current
     currentStrokeRef.current = null
     lastPointRef.current = null
     if (stroke && stroke.points.length > 0) {
       strokesRef.current.push(stroke)
-      // 超過上限時丟棄最舊的一步
       if (strokesRef.current.length > MAX_UNDO) strokesRef.current.shift()
       setStrokeCount(strokesRef.current.length)
     }
@@ -206,7 +288,6 @@ export default function MaskEditor({ image, maskCanvas, onProcess, onBack }: Mas
     if (strokes.length === 0) return
     strokes.pop()
     setStrokeCount(strokes.length)
-    // 清空後重放剩餘筆劃
     const ctx = maskCanvas.getContext('2d')!
     ctx.clearRect(0, 0, maskCanvas.width, maskCanvas.height)
     for (const s of strokes) drawStroke(ctx, s)
@@ -226,25 +307,52 @@ export default function MaskEditor({ image, maskCanvas, onProcess, onBack }: Mas
   return (
     <div className="mask-editor">
       <div className="toolbar">
-        <label className="brush-control">
-          筆刷大小
-          <input
-            type="range"
-            min={MIN_BRUSH}
-            max={MAX_BRUSH}
-            value={brushSize}
-            onChange={(e) => setBrushSize(Number(e.target.value))}
-          />
-          <span className="brush-value">{brushSize}px</span>
-        </label>
-        <div className="toolbar-buttons">
+        <div className="tool-selector">
           <button
             type="button"
-            className={eraser ? 'active' : ''}
+            className={`tool-btn${drawMode === 'brush' && !eraser ? ' active' : ''}`}
+            onClick={() => {
+              setDrawMode('brush')
+              setEraser(false)
+            }}
+          >
+            🖌️ 塗抹筆刷
+          </button>
+          <button
+            type="button"
+            className={`tool-btn${drawMode === 'rect' && !eraser ? ' active' : ''}`}
+            onClick={() => {
+              setDrawMode('rect')
+              setEraser(false)
+            }}
+            title="拖曳框選快速去除矩形浮水印/台標"
+          >
+            🔲 快速框選
+          </button>
+          <button
+            type="button"
+            className={`tool-btn${eraser ? ' active' : ''}`}
             onClick={() => setEraser((v) => !v)}
           >
-            {eraser ? '橡皮擦（使用中）' : '橡皮擦'}
+            🧹 橡皮擦
           </button>
+        </div>
+
+        {drawMode === 'brush' && (
+          <label className="brush-control">
+            筆刷大小
+            <input
+              type="range"
+              min={MIN_BRUSH}
+              max={MAX_BRUSH}
+              value={brushSize}
+              onChange={(e) => setBrushSize(Number(e.target.value))}
+            />
+            <span className="brush-value">{brushSize}px</span>
+          </label>
+        )}
+
+        <div className="toolbar-buttons">
           <button type="button" onClick={undo} disabled={strokeCount === 0}>
             復原
           </button>

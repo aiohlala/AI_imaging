@@ -366,3 +366,61 @@ export function sampleSkinToneAt(
     hex,
   }
 }
+
+/**
+ * 從指定遮罩區域計算膚色統計（用於 AI 自動分離之臉部或身體區域）
+ */
+export function sampleSkinToneFromMask(
+  sourceCanvas: HTMLCanvasElement,
+  maskCanvas: HTMLCanvasElement,
+): { stats: LabStats; previewRgb: [number, number, number]; hex: string } {
+  const w = sourceCanvas.width
+  const h = sourceCanvas.height
+  const totalPixels = w * h
+
+  const srcCtx = sourceCanvas.getContext('2d')!
+  const srcData = srcCtx.getImageData(0, 0, w, h).data
+
+  const maskCtx = maskCanvas.getContext('2d')!
+  const maskData = maskCtx.getImageData(0, 0, w, h).data
+
+  const labList = new Float32Array(totalPixels * 3)
+  const validIndices: number[] = []
+
+  let rSum = 0
+  let gSum = 0
+  let bSum = 0
+
+  for (let i = 0; i < totalPixels; i++) {
+    const p = i * 4
+    const r = srcData[p]
+    const g = srcData[p + 1]
+    const b = srcData[p + 2]
+    const [L, a_val, b_val] = rgbToOklab(r, g, b)
+
+    labList[i * 3] = L
+    labList[i * 3 + 1] = a_val
+    labList[i * 3 + 2] = b_val
+
+    if (maskData[p + 3] > 60) {
+      validIndices.push(i)
+      rSum += r
+      gSum += g
+      bSum += b
+    }
+  }
+
+  const count = validIndices.length
+  const avgR = count > 0 ? Math.round(rSum / count) : 210
+  const avgG = count > 0 ? Math.round(gSum / count) : 170
+  const avgB = count > 0 ? Math.round(bSum / count) : 150
+  const hex = `#${avgR.toString(16).padStart(2, '0')}${avgG.toString(16).padStart(2, '0')}${avgB.toString(16).padStart(2, '0')}`
+
+  const stats = computeLabStats(labList, validIndices)
+  return {
+    stats,
+    previewRgb: [avgR, avgG, avgB],
+    hex,
+  }
+}
+

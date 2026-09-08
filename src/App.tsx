@@ -1,8 +1,9 @@
 import { useState } from 'react'
 import WatermarkApp from './components/WatermarkApp'
+import BackgroundRemovalApp from './components/BackgroundRemoval/BackgroundRemovalApp'
 import SkinToneApp from './components/SkinTone/SkinToneApp'
 
-type Tab = 'watermark' | 'skintone'
+type Tab = 'watermark' | 'bg-removal' | 'skintone'
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<Tab>('watermark')
@@ -10,7 +11,7 @@ export default function App() {
   return (
     <div className="app">
       <header className="app-header">
-        {/* 頂部導覽切換列 */}
+        {/* 頂部三區塊功能切換導覽列 */}
         <nav className="feature-nav" role="tablist" aria-label="功能選擇">
           <button
             type="button"
@@ -25,6 +26,16 @@ export default function App() {
           <button
             type="button"
             role="tab"
+            aria-selected={activeTab === 'bg-removal'}
+            className={`nav-tab-btn${activeTab === 'bg-removal' ? ' active' : ''}`}
+            onClick={() => setActiveTab('bg-removal')}
+          >
+            <span className="tab-icon">✂️</span>
+            <span>背景去除</span>
+          </button>
+          <button
+            type="button"
+            role="tab"
             aria-selected={activeTab === 'skintone'}
             className={`nav-tab-btn${activeTab === 'skintone' ? ' active' : ''}`}
             onClick={() => setActiveTab('skintone')}
@@ -35,22 +46,31 @@ export default function App() {
         </nav>
 
         <h1>
-          {activeTab === 'watermark' ? '浮水印去除工具' : '人像膚色勻稱工具'}
+          {activeTab === 'watermark' && '浮水印去除工具'}
+          {activeTab === 'bg-removal' && 'AI 智慧背景去除'}
+          {activeTab === 'skintone' && 'AI 人像膚色勻稱工具'}
         </h1>
         <p className="subtitle">
-          {activeTab === 'watermark'
-            ? '純前端處理，圖片不會上傳到任何伺服器'
-            : '純前端 OKLab 感官色彩調和，臉部與身體膚色自然一致'}
+          {activeTab === 'watermark' && '純前端處理，支援自由塗抹筆刷與快速框選浮水印'}
+          {activeTab === 'bg-removal' && 'Google MediaPipe WebAssembly 本機去背，支援透明 PNG 與證件底色替換'}
+          {activeTab === 'skintone' && 'AI 自動分離臉部與身體 ＋ OKLab 感官色彩轉移，自然勻稱'}
         </p>
       </header>
 
       <main className="app-main">
-        {/* 保持兩者 DOM 狀態獨立且互不干擾 */}
+        {/* 保持三者 DOM 狀態獨立且互不干擾 */}
         <div
           role="tabpanel"
           style={{ display: activeTab === 'watermark' ? 'block' : 'none' }}
         >
           <WatermarkApp />
+        </div>
+
+        <div
+          role="tabpanel"
+          style={{ display: activeTab === 'bg-removal' ? 'block' : 'none' }}
+        >
+          <BackgroundRemovalApp />
         </div>
 
         <div
@@ -63,9 +83,9 @@ export default function App() {
 
       <footer className="app-footer">
         <p>
-          {activeTab === 'watermark'
-            ? '使用 OpenCV Telea inpainting 演算法，所有運算皆在瀏覽器本機完成。'
-            : '使用 OKLab 感官色彩空間與邊緣高斯羽化，純前端運算，隱私無憂。'}
+          {activeTab === 'watermark' && '使用 OpenCV Telea inpainting 演算法，所有運算皆在瀏覽器本機完成。'}
+          {activeTab === 'bg-removal' && '使用 Google MediaPipe 神經網絡模型，100% 本機端 WebAssembly/WebGPU 加速。'}
+          {activeTab === 'skintone' && '使用 MediaPipe 人像語意分割與 OKLab 感官色彩空間，保護個人隱私。'}
         </p>
       </footer>
     </div>

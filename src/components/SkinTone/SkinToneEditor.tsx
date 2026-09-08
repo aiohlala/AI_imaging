@@ -3,7 +3,9 @@ import {
   type HarmonizeOptions,
   type LabStats,
   sampleSkinToneAt,
+  sampleSkinToneFromMask,
 } from '../../lib/colorTransfer'
+import { segmentPersonCategories } from '../../lib/mediapipe'
 
 const MIN_BRUSH = 5
 const MAX_BRUSH = 150
@@ -268,6 +270,43 @@ export default function SkinToneEditor({
     redrawOverlay()
   }
 
+  const [isAnalyzing, setIsAnalyzing] = useState(false)
+
+  const handleAIDetect = async () => {
+    setIsAnalyzing(true)
+    try {
+      const { faceSkinMask, bodySkinMask } = await segmentPersonCategories(image)
+      const srcCanvas = document.createElement('canvas')
+      srcCanvas.width = imgW
+      srcCanvas.height = imgH
+      const srcCtx = srcCanvas.getContext('2d')!
+      srcCtx.drawImage(image, 0, 0)
+
+      const maskCtx = maskCanvas.getContext('2d')!
+      maskCtx.clearRect(0, 0, maskCanvas.width, maskCanvas.height)
+
+      if (direction === 'body-to-face') {
+        const sample = sampleSkinToneFromMask(srcCanvas, bodySkinMask)
+        setSampleData(sample)
+        maskCtx.drawImage(faceSkinMask, 0, 0)
+      } else {
+        const sample = sampleSkinToneFromMask(srcCanvas, faceSkinMask)
+        setSampleData(sample)
+        maskCtx.drawImage(bodySkinMask, 0, 0)
+      }
+
+      setHasMask(true)
+      setActiveTool('brush')
+      setEraser(false)
+      redrawOverlay()
+    } catch (e) {
+      console.error(e)
+      alert('AI 自動分析失敗，請使用手動吸管點選與筆刷塗抹。')
+    } finally {
+      setIsAnalyzing(false)
+    }
+  }
+
   const handleStart = () => {
     if (!sampleData || !hasMask) return
     onProcess({
@@ -302,8 +341,8 @@ export default function SkinToneEditor({
         </div>
         <div className="direction-hint">
           {direction === 'body-to-face'
-            ? '步驟：1. 使用吸管點選「身體/胸頸」膚色 ➜ 2. 塗抹筆刷標記「臉部」區域 ➜ 3. 開始調和'
-            : '步驟：1. 使用吸管點選「臉部」膚色 ➜ 2. 塗抹筆刷標記「身體/頸部/手臂」區域 ➜ 3. 開始調和'}
+            ? '步驟：點擊「✨ AI 自動分離」一鍵配置，或用吸管點「身體」再用筆刷塗抹「臉部」'
+            : '步驟：點擊「✨ AI 自動分離」一鍵配置，或用吸管點「臉部」再用筆刷塗抹「身體」'}
         </div>
       </div>
 
@@ -312,14 +351,23 @@ export default function SkinToneEditor({
         <div className="tool-selector">
           <button
             type="button"
+            className="tool-btn ai-magic-btn"
+            onClick={handleAIDetect}
+            disabled={isAnalyzing}
+            title="利用 Google MediaPipe AI 智慧自動辨識臉部與身體區域"
+          >
+            {isAnalyzing ? '✨ AI 分析中…' : '✨ AI 自動分離'}
+          </button>
+          <button
+            type="button"
             className={`tool-btn${activeTool === 'eyedropper' ? ' active' : ''}`}
             onClick={() => {
               setActiveTool('eyedropper')
               setEraser(false)
             }}
-            title="點擊圖片上的參考皮膚取樣色彩"
+            title="手動點擊圖片上的參考皮膚取樣色彩"
           >
-            💧 點擊取樣膚色
+            💧 手動取樣
           </button>
           <button
             type="button"
@@ -328,7 +376,7 @@ export default function SkinToneEditor({
               setActiveTool('brush')
               setEraser(false)
             }}
-            title="塗抹要調整膚色的目標區域"
+            title="手動塗抹要調整膚色的目標區域"
           >
             🖌️ 塗抹目標區
           </button>
