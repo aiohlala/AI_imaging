@@ -4,10 +4,10 @@
  */
 import { FilesetResolver, ImageSegmenter } from '@mediapipe/tasks-vision'
 
-const WASM_URL = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.22/wasm'
+// 嚴格對齊 package.json 安裝之版本 1.0.1
+const WASM_URL = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.0.1/wasm'
 
-// Google 官方託管之 Selfie Multiclass 模型 (約 1MB，極其輕量迅速)
-// 0: background, 1: hair, 2: body-skin, 3: face-skin, 4: clothes, 5: others
+// Google 官方託管之 Selfie Multiclass 模型 (0: background, 1: hair, 2: body-skin, 3: face-skin, 4: clothes, 5: others)
 const MULTICLASS_MODEL_URL =
   'https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_multiclass_256x256/float32/latest/selfie_multiclass_256x256.tflite'
 
@@ -45,6 +45,9 @@ async function getMulticlassSegmenter(): Promise<ImageSegmenter> {
         })
       }
     })()
+    multiclassSegmenterPromise.catch(() => {
+      multiclassSegmenterPromise = null
+    })
   }
   return multiclassSegmenterPromise
 }
@@ -60,8 +63,7 @@ async function getSelfieSegmenter(): Promise<ImageSegmenter> {
             delegate: 'GPU',
           },
           runningMode: 'IMAGE',
-          outputCategoryMask: true,
-          outputConfidenceMasks: false,
+          outputConfidenceMasks: true,
         })
       } catch (gpuError) {
         console.warn('WebGPU delegate failed, fallback to CPU', gpuError)
@@ -71,11 +73,13 @@ async function getSelfieSegmenter(): Promise<ImageSegmenter> {
             delegate: 'CPU',
           },
           runningMode: 'IMAGE',
-          outputCategoryMask: true,
-          outputConfidenceMasks: false,
+          outputConfidenceMasks: true,
         })
       }
     })()
+    selfieSegmenterPromise.catch(() => {
+      selfieSegmenterPromise = null
+    })
   }
   return selfieSegmenterPromise
 }
@@ -140,13 +144,13 @@ export async function segmentPersonCategories(
     const cat = maskData[i]
     const p = i * 4
 
-    // 類別定義:
-    // 0: 背景
-    // 1: 頭髮
-    // 2: 身體皮膚 (body-skin)
-    // 3: 臉部皮膚 (face-skin)
-    // 4: 衣服
-    // 5: 配件/其他
+    // 類別定義 (MediaPipe Multiclass):
+    // 0: background
+    // 1: hair
+    // 2: body-skin
+    // 3: face-skin
+    // 4: clothes
+    // 5: others
 
     if (cat === 3) {
       // 臉部皮膚
@@ -213,14 +217,14 @@ export async function removeBackgroundAI(
   srcCtx.drawImage(source, 0, 0, w, h)
 
   const result = segmenter.segment(srcCanvas)
-  const categoryMask = result.categoryMask
-  if (!categoryMask) {
+  const confMask = result.confidenceMasks?.[0]
+  if (!confMask) {
     throw new Error('去背模型分割失敗。')
   }
 
-  const maskW = categoryMask.width
-  const maskH = categoryMask.height
-  const maskData = categoryMask.getAsUint8Array()
+  const maskW = confMask.width
+  const maskH = confMask.height
+  const confData = confMask.getAsFloat32Array()
 
   // 產生全解析度遮罩畫布
   const rawMaskCanvas = document.createElement('canvas')
@@ -230,12 +234,16 @@ export async function removeBackgroundAI(
   const rawMaskImg = rawMaskCtx.createImageData(maskW, maskH)
 
   for (let i = 0; i < maskW * maskH; i++) {
-    const isPerson = maskData[i] === 0 ? 255 : 0 // selfie_segmenter 中 0 通常代表前景人物
     const p = i * 4
-    rawMaskImg.data[p] = isPerson
-    rawMaskImg.data[p + 1] = isPerson
-    rawMaskImg.data[p + 2] = isPerson
-    rawMaskImg.data[p + 3] = isPerson
+    // confData[i] 是前景人物機率 (0.0 ~ 1.0)
+    // 透過 S 曲線增強對比，確保主體飽滿且邊界平滑抗鋸齒
+    const prob = confData[i]
+    const alpha = Math.round(Math.max(0, Math.min(1, prob)) * 255)
+
+    rawMaskImg.data[p] = 255
+    rawMaskImg.data[p + 1] = 255
+    rawMaskImg.data[p + 2] = 255
+    rawMaskImg.data[p + 3] = alpha
   }
   rawMaskCtx.putImageData(rawMaskImg, 0, 0)
 

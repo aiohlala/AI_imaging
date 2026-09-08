@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { autoScanWatermarks, smartClickWatermark } from '../lib/watermarkDetector'
 
 const MIN_BRUSH = 5
 const MAX_BRUSH = 100
@@ -137,7 +138,8 @@ export default function MaskEditor({ image, maskCanvas, onProcess, onBack }: Mas
   }, [redrawOverlay])
 
   /** 將 pointer 事件的 client 座標換算成原圖解析度座標 */
-  const [drawMode, setDrawMode] = useState<'brush' | 'rect'>('brush')
+  const [drawMode, setDrawMode] = useState<'brush' | 'magic' | 'rect'>('brush')
+  const [isScanning, setIsScanning] = useState(false)
   const startPointRef = useRef<Point | null>(null)
   const currentDragPointRef = useRef<Point | null>(null)
 
@@ -152,11 +154,38 @@ export default function MaskEditor({ image, maskCanvas, onProcess, onBack }: Mas
     }
   }
 
+  const handleAutoScan = async () => {
+    setIsScanning(true)
+    try {
+      const count = await autoScanWatermarks(image, maskCanvas)
+      if (count > 0) {
+        setHasMask(true)
+        redrawOverlay()
+      } else {
+        alert('未偵測到明顯的文字浮水印，請點選「🪄 AI 點選圈選」或「🔲 快速框選」直接標記！')
+      }
+    } catch (e) {
+      console.error(e)
+      alert('AI 掃描時發生錯誤，請改用手動工具。')
+    } finally {
+      setIsScanning(false)
+    }
+  }
+
   const onPointerDown = (e: React.PointerEvent) => {
     const p = toImageCoords(e)
     if (!p) return
     e.preventDefault()
     ;(e.target as Element).setPointerCapture(e.pointerId)
+
+    if (drawMode === 'magic') {
+      void smartClickWatermark(image, maskCanvas, p.x, p.y).then(() => {
+        redrawOverlay()
+        setHasMask(true)
+      })
+      return
+    }
+
     drawingRef.current = true
 
     if (drawMode === 'rect') {
@@ -310,13 +339,23 @@ export default function MaskEditor({ image, maskCanvas, onProcess, onBack }: Mas
         <div className="tool-selector">
           <button
             type="button"
-            className={`tool-btn${drawMode === 'brush' && !eraser ? ' active' : ''}`}
+            className="tool-btn ai-magic-btn"
+            onClick={handleAutoScan}
+            disabled={isScanning}
+            title="利用電腦視覺演算法自動掃描全圖浮水印與文字"
+          >
+            {isScanning ? '⚡ 掃描中…' : '⚡ AI 全圖掃描'}
+          </button>
+          <button
+            type="button"
+            className={`tool-btn${drawMode === 'magic' && !eraser ? ' active' : ''}`}
             onClick={() => {
-              setDrawMode('brush')
+              setDrawMode('magic')
               setEraser(false)
             }}
+            title="點擊浮水印文字任一處，自動貼合輪廓圈選"
           >
-            🖌️ 塗抹筆刷
+            🪄 AI 點選圈選
           </button>
           <button
             type="button"
@@ -328,6 +367,16 @@ export default function MaskEditor({ image, maskCanvas, onProcess, onBack }: Mas
             title="拖曳框選快速去除矩形浮水印/台標"
           >
             🔲 快速框選
+          </button>
+          <button
+            type="button"
+            className={`tool-btn${drawMode === 'brush' && !eraser ? ' active' : ''}`}
+            onClick={() => {
+              setDrawMode('brush')
+              setEraser(false)
+            }}
+          >
+            🖌️ 自由塗抹
           </button>
           <button
             type="button"

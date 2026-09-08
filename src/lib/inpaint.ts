@@ -23,7 +23,7 @@ let cvPromise: Promise<Cv> | null = null
  * 被 promise chain 解包時拋出「incompatible receiver」錯誤。
  * UMD 版由 script 標籤執行後會把真正的 Promise 掛到 globalThis.cv。
  */
-function loadOpenCV(): Promise<Cv> {
+export function loadOpenCV(): Promise<Cv> {
   if (!cvPromise) {
     cvPromise = (async () => {
       await new Promise<void>((resolve, reject) => {
