@@ -35,6 +35,7 @@ export default function ImageCropperModal({
   onCancel,
 }: ImageCropperModalProps) {
   const containerRef = useRef<HTMLDivElement>(null)
+  const sourceCanvasRef = useRef<HTMLCanvasElement>(null)
   const imgW = image.naturalWidth
   const imgH = image.naturalHeight
 
@@ -79,6 +80,19 @@ export default function ImageCropperModal({
     const y = Math.round((ch - h) / 2)
     setImgDisplay({ x, y, w, h })
   }, [imgW, imgH])
+
+
+  // 將原圖繪製到畫布上（直接 drawImage，不受 blob URL 影響，保證即時清晰可見）
+  useEffect(() => {
+    const canvas = sourceCanvasRef.current
+    if (!canvas || imgDisplay.w === 0 || imgDisplay.h === 0) return
+    canvas.width = imgDisplay.w
+    canvas.height = imgDisplay.h
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+    ctx.clearRect(0, 0, canvas.width, canvas.height)
+    ctx.drawImage(image, 0, 0, imgDisplay.w, imgDisplay.h)
+  }, [image, imgDisplay])
 
   useEffect(() => {
     updateLayout()
@@ -325,18 +339,16 @@ export default function ImageCropperModal({
         >
           {imgDisplay.w > 0 && (
             <>
-              {/* 底層圖片 */}
-              <img
-                src={image.src}
-                alt="待裁切原圖"
-                className="crop-source-image"
+              {/* 底層圖片畫布（直接以 drawImage 繪製，不受 blob URL 釋放影響） */}
+              <canvas
+                ref={sourceCanvasRef}
+                className="crop-source-canvas"
                 style={{
                   left: imgDisplay.x,
                   top: imgDisplay.y,
                   width: imgDisplay.w,
                   height: imgDisplay.h,
                 }}
-                draggable={false}
               />
 
               {/* 暗色遮罩層 (周圍四塊) */}
