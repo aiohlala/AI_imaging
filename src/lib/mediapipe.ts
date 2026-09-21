@@ -192,6 +192,7 @@ export interface BackgroundRemovalResult {
   confidenceData: Float32Array
   maskWidth: number
   maskHeight: number
+  detectedType: 'portrait' | 'object'
 }
 
 /**
@@ -249,14 +250,92 @@ export function buildMaskFromConfidence(
   return fullMaskCanvas
 }
 
+
 /**
- * AI 一鍵去除背景（支援高精度邊界切割）
+ * 智慧物件/圖標與純色背景分離演算法（非人像物件、LOGO、商品、插畫通用）
+ * 取樣邊界與四角像素作為背景基準，計算像素色彩距離，生成高對比信心度遮罩。
+ */
+export function segmentObjectFromBackground(
+  canvas: HTMLCanvasElement,
+): { confidenceData: Float32Array; width: number; height: number } {
+  const w = canvas.width
+  const h = canvas.height
+  const ctx = canvas.getContext('2d', { willReadFrequently: true })!
+  const imgData = ctx.getImageData(0, 0, w, h)
+  const data = imgData.data
+
+  // 1. 取樣四個角落像素
+  const getPixel = (x: number, y: number) => {
+    const idx = (y * w + x) * 4
+    return [data[idx], data[idx + 1], data[idx + 2]]
+  }
+
+  const cTL = getPixel(0, 0)
+  const cTR = getPixel(w - 1, 0)
+  const cBL = getPixel(0, h - 1)
+  const cBR = getPixel(w - 1, h - 1)
+
+  // 2. 取樣四條外邊界像素計算平均背景色彩
+  let rSum = 0, gSum = 0, bSum = 0, count = 0
+  for (let x = 0; x < w; x += 2) {
+    const p1 = x * 4
+    const p2 = ((h - 1) * w + x) * 4
+    rSum += data[p1] + data[p2]
+    gSum += data[p1 + 1] + data[p2 + 1]
+    bSum += data[p1 + 2] + data[p2 + 2]
+    count += 2
+  }
+  for (let y = 1; y < h - 1; y += 2) {
+    const p1 = (y * w) * 4
+    const p2 = (y * w + (w - 1)) * 4
+    rSum += data[p1] + data[p2]
+    gSum += data[p1 + 1] + data[p2 + 1]
+    bSum += data[p1 + 2] + data[p2 + 2]
+    count += 2
+  }
+
+  const cAvg = [rSum / count, gSum / count, bSum / count]
+  const bgSamples = [cTL, cTR, cBL, cBR, cAvg]
+
+  const totalPixels = w * h
+  const confData = new Float32Array(totalPixels)
+
+  // 3. 計算每個像素到最近背景取樣點的色差
+  for (let i = 0; i < totalPixels; i++) {
+    const p = i * 4
+    const pr = data[p]
+    const pg = data[p + 1]
+    const pb = data[p + 2]
+
+    let minDist = 9999
+    for (const [sr, sg, sb] of bgSamples) {
+      const dr = pr - sr
+      const dg = pg - sg
+      const db = pb - sb
+      const d = Math.sqrt(dr * dr + dg * dg + db * db)
+      if (d < minDist) minDist = d
+    }
+
+    // 歸一化：距離 < 15 確信為背景 (norm = 0)，距離 > 85 確信為前景 (norm = 1)
+    const norm = Math.min(1, Math.max(0, (minDist - 15) / 70))
+    confData[i] = norm
+  }
+
+  return {
+    confidenceData: confData,
+    width: w,
+    height: h,
+  }
+}
+
+/**
+ * AI 一鍵去除背景（支援人像神經網路與智慧物件分離）
  */
 export async function removeBackgroundAI(
   source: HTMLImageElement | HTMLCanvasElement,
   threshold = 0.5,
+  mode: 'auto' | 'portrait' | 'object' = 'auto',
 ): Promise<BackgroundRemovalResult> {
-  const segmenter = await getSelfieSegmenter()
   const w = (source as HTMLImageElement).naturalWidth ?? (source as HTMLCanvasElement).width
   const h = (source as HTMLImageElement).naturalHeight ?? (source as HTMLCanvasElement).height
 
@@ -266,18 +345,59 @@ export async function removeBackgroundAI(
   const srcCtx = srcCanvas.getContext('2d')!
   srcCtx.drawImage(source, 0, 0, w, h)
 
-  const result = segmenter.segment(srcCanvas)
-  const confMask = result.confidenceMasks?.[0]
-  if (!confMask) {
-    throw new Error('去背模型分割失敗。')
+  let finalConfData: Float32Array
+  let maskW: number
+  let maskH: number
+  let detectedType: 'portrait' | 'object' = 'portrait'
+
+  if (mode === 'object') {
+    const objRes = segmentObjectFromBackground(srcCanvas)
+    finalConfData = objRes.confidenceData
+    maskW = objRes.width
+    maskH = objRes.height
+    detectedType = 'object'
+  } else {
+    const segmenter = await getSelfieSegmenter()
+    const result = segmenter.segment(srcCanvas)
+    const confMask = result.confidenceMasks?.[0]
+    if (!confMask) {
+      throw new Error('去背模型分割失敗。')
+    }
+
+    const mWidth = confMask.width
+    const mHeight = confMask.height
+    const confData = confMask.getAsFloat32Array()
+
+    // 評估是否有人像特徵
+    let maxProb = 0
+    let personCount = 0
+    const sampleStep = 4
+    for (let i = 0; i < confData.length; i += sampleStep) {
+      const p = confData[i]
+      if (p > maxProb) maxProb = p
+      if (p > 0.3) personCount++
+    }
+
+    const hasPerson =
+      maxProb >= 0.28 && personCount >= Math.max(30, (confData.length / sampleStep) * 0.004)
+
+    if (mode === 'auto' && !hasPerson) {
+      // 自動判定為非人像（如月亮、圖標、LOGO、插畫），無縫啟用智慧物件分離
+      const objRes = segmentObjectFromBackground(srcCanvas)
+      finalConfData = objRes.confidenceData
+      maskW = objRes.width
+      maskH = objRes.height
+      detectedType = 'object'
+    } else {
+      finalConfData = confData
+      maskW = mWidth
+      maskH = mHeight
+      detectedType = 'portrait'
+    }
   }
 
-  const maskW = confMask.width
-  const maskH = confMask.height
-  const confData = confMask.getAsFloat32Array()
-
   // 依閾值計算遮罩畫布
-  const fullMaskCanvas = buildMaskFromConfidence(confData, maskW, maskH, w, h, threshold)
+  const fullMaskCanvas = buildMaskFromConfidence(finalConfData, maskW, maskH, w, h, threshold)
 
   // 套用遮罩產出透明背景圖
   const outCanvas = document.createElement('canvas')
@@ -291,8 +411,9 @@ export async function removeBackgroundAI(
   return {
     resultCanvas: outCanvas,
     maskCanvas: fullMaskCanvas,
-    confidenceData: confData,
+    confidenceData: finalConfData,
     maskWidth: maskW,
     maskHeight: maskH,
+    detectedType,
   }
 }

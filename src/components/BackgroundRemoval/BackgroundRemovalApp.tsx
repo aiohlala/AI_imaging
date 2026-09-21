@@ -69,6 +69,8 @@ export default function BackgroundRemovalApp() {
   const [threshold, setThreshold] = useState(50)
   // 快取 MediaPipe 神經網絡推論結果，支援即時滑動更新遮罩
   const [cachedResult, setCachedResult] = useState<BackgroundRemovalResult | null>(null)
+  const [removeMode, setRemoveMode] = useState<'auto' | 'portrait' | 'object'>('auto')
+  const [detectedType, setDetectedType] = useState<'portrait' | 'object' | null>(null)
 
   // 微調筆刷控制
   const [brushMode, setBrushMode] = useState<'view' | 'restore' | 'erase'>('view')
@@ -92,6 +94,7 @@ export default function BackgroundRemovalApp() {
     setStatus('editing')
     setMaskCanvas(null)
     setCachedResult(null)
+    setDetectedType(null)
     setError(null)
     setStrokes([])
     setBrushMode('view')
@@ -104,9 +107,10 @@ export default function BackgroundRemovalApp() {
     setError(null)
 
     try {
-      const res = await removeBackgroundAI(image, threshold / 100)
+      const res = await removeBackgroundAI(image, threshold / 100, removeMode)
       setCachedResult(res)
       setMaskCanvas(res.maskCanvas)
+      setDetectedType(res.detectedType)
       setStrokes([])
       setStatus('editing')
     } catch (e) {
@@ -297,6 +301,7 @@ export default function BackgroundRemovalApp() {
     setImage(croppedImg)
     setMaskCanvas(croppedMask ?? null)
     setCachedResult(null) // 尺寸已改變，清除舊的推論快取
+    setDetectedType(null)
     setStrokes([])
     setIsCropping(false)
   }
@@ -347,6 +352,7 @@ export default function BackgroundRemovalApp() {
     setImage(null)
     setMaskCanvas(null)
     setCachedResult(null)
+    setDetectedType(null)
     setStatus('empty')
     setError(null)
     setStrokes([])
@@ -355,6 +361,7 @@ export default function BackgroundRemovalApp() {
   const handleClearMask = () => {
     setMaskCanvas(null)
     setCachedResult(null)
+    setDetectedType(null)
     setStrokes([])
   }
 
@@ -401,10 +408,33 @@ export default function BackgroundRemovalApp() {
                 type="button"
                 className="tool-btn ai-magic-btn"
                 onClick={handleRunAI}
-                title="執行 Google MediaPipe 本機智慧去背"
+                title="執行本機智慧去背"
               >
                 ✨ AI 一鍵去背
               </button>
+              <div className="mode-toggle-group" title="切換去背模式：自動判斷 / 人像神經網絡 / 物件圖標">
+                <button
+                  type="button"
+                  className={`mode-chip-btn${removeMode === 'auto' ? ' active' : ''}`}
+                  onClick={() => setRemoveMode('auto')}
+                >
+                  🤖 自動
+                </button>
+                <button
+                  type="button"
+                  className={`mode-chip-btn${removeMode === 'portrait' ? ' active' : ''}`}
+                  onClick={() => setRemoveMode('portrait')}
+                >
+                  👤 人像
+                </button>
+                <button
+                  type="button"
+                  className={`mode-chip-btn${removeMode === 'object' ? ' active' : ''}`}
+                  onClick={() => setRemoveMode('object')}
+                >
+                  📦 物件/圖標
+                </button>
+              </div>
               <button
                 type="button"
                 className="tool-btn"
@@ -535,6 +565,11 @@ export default function BackgroundRemovalApp() {
                 />
                 <span className="brush-value">{brushSize}px</span>
               </label>
+            )}
+            {detectedType && (
+              <span className={`detected-badge ${detectedType}`}>
+                {detectedType === 'portrait' ? '👤 AI 人像神經網絡模式' : '📦 智慧物件/圖標去背模式'}
+              </span>
             )}
             {!maskCanvas && (
               <span className="hint-text">點擊上方「✨ AI 一鍵去背」開始自動分離主體與背景</span>
