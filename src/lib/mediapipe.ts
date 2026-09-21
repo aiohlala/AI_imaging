@@ -103,7 +103,6 @@ export async function segmentPersonCategories(
   const w = (source as HTMLImageElement).naturalWidth ?? (source as HTMLCanvasElement).width
   const h = (source as HTMLImageElement).naturalHeight ?? (source as HTMLCanvasElement).height
 
-  // 建立來源 Canvas 以確保格式統一
   const tempCanvas = document.createElement('canvas')
   tempCanvas.width = w
   tempCanvas.height = h
@@ -120,7 +119,6 @@ export async function segmentPersonCategories(
   const maskHeight = categoryMask.height
   const maskData = categoryMask.getAsUint8Array()
 
-  // 建立分類畫布
   const faceCanvas = document.createElement('canvas')
   faceCanvas.width = maskWidth
   faceCanvas.height = maskHeight
@@ -144,16 +142,7 @@ export async function segmentPersonCategories(
     const cat = maskData[i]
     const p = i * 4
 
-    // 類別定義 (MediaPipe Multiclass):
-    // 0: background
-    // 1: hair
-    // 2: body-skin
-    // 3: face-skin
-    // 4: clothes
-    // 5: others
-
     if (cat === 3) {
-      // 臉部皮膚
       faceImg.data[p] = 255
       faceImg.data[p + 1] = 255
       faceImg.data[p + 2] = 255
@@ -161,7 +150,6 @@ export async function segmentPersonCategories(
     }
 
     if (cat === 2) {
-      // 身體皮膚
       bodyImg.data[p] = 255
       bodyImg.data[p + 1] = 255
       bodyImg.data[p + 2] = 255
@@ -169,7 +157,6 @@ export async function segmentPersonCategories(
     }
 
     if (cat > 0) {
-      // 人物主體
       personImg.data[p] = 255
       personImg.data[p + 1] = 255
       personImg.data[p + 2] = 255
@@ -181,7 +168,6 @@ export async function segmentPersonCategories(
   bodyCtx.putImageData(bodyImg, 0, 0)
   personCtx.putImageData(personImg, 0, 0)
 
-  // 縮放回原圖解析度
   const scaleToOriginal = (canvas: HTMLCanvasElement): HTMLCanvasElement => {
     if (canvas.width === w && canvas.height === h) return canvas
     const out = document.createElement('canvas')
@@ -200,12 +186,76 @@ export async function segmentPersonCategories(
   }
 }
 
+export interface BackgroundRemovalResult {
+  resultCanvas: HTMLCanvasElement
+  maskCanvas: HTMLCanvasElement
+  confidenceData: Float32Array
+  maskWidth: number
+  maskHeight: number
+}
+
+/**
+ * 依據原始 Float32Array 信心度遮罩與指定閾值 (0.05 ~ 0.95) 產生遮罩畫布
+ */
+export function buildMaskFromConfidence(
+  confData: Float32Array,
+  maskW: number,
+  maskH: number,
+  targetW: number,
+  targetH: number,
+  threshold = 0.5,
+): HTMLCanvasElement {
+  const rawMaskCanvas = document.createElement('canvas')
+  rawMaskCanvas.width = maskW
+  rawMaskCanvas.height = maskH
+  const rawMaskCtx = rawMaskCanvas.getContext('2d')!
+  const rawMaskImg = rawMaskCtx.createImageData(maskW, maskH)
+
+  // 邊緣柔化羽化區間 (以閾值為中心，給予平滑過渡)
+  const feather = 0.08
+  const low = Math.max(0, threshold - feather)
+  const high = Math.min(1, threshold + feather)
+  const range = Math.max(0.001, high - low)
+
+  for (let i = 0; i < maskW * maskH; i++) {
+    const p = i * 4
+    const prob = confData[i]
+
+    let factor = 0
+    if (prob >= high) {
+      factor = 1
+    } else if (prob <= low) {
+      factor = 0
+    } else {
+      factor = (prob - low) / range
+    }
+
+    const alpha = Math.round(factor * 255)
+
+    rawMaskImg.data[p] = 255
+    rawMaskImg.data[p + 1] = 255
+    rawMaskImg.data[p + 2] = 255
+    rawMaskImg.data[p + 3] = alpha
+  }
+  rawMaskCtx.putImageData(rawMaskImg, 0, 0)
+
+  // 縮放遮罩至原圖尺寸
+  const fullMaskCanvas = document.createElement('canvas')
+  fullMaskCanvas.width = targetW
+  fullMaskCanvas.height = targetH
+  const fullMaskCtx = fullMaskCanvas.getContext('2d')!
+  fullMaskCtx.imageSmoothingEnabled = true
+  fullMaskCtx.drawImage(rawMaskCanvas, 0, 0, targetW, targetH)
+  return fullMaskCanvas
+}
+
 /**
  * AI 一鍵去除背景（支援高精度邊界切割）
  */
 export async function removeBackgroundAI(
   source: HTMLImageElement | HTMLCanvasElement,
-): Promise<{ resultCanvas: HTMLCanvasElement; maskCanvas: HTMLCanvasElement }> {
+  threshold = 0.5,
+): Promise<BackgroundRemovalResult> {
   const segmenter = await getSelfieSegmenter()
   const w = (source as HTMLImageElement).naturalWidth ?? (source as HTMLCanvasElement).width
   const h = (source as HTMLImageElement).naturalHeight ?? (source as HTMLCanvasElement).height
@@ -226,34 +276,8 @@ export async function removeBackgroundAI(
   const maskH = confMask.height
   const confData = confMask.getAsFloat32Array()
 
-  // 產生全解析度遮罩畫布
-  const rawMaskCanvas = document.createElement('canvas')
-  rawMaskCanvas.width = maskW
-  rawMaskCanvas.height = maskH
-  const rawMaskCtx = rawMaskCanvas.getContext('2d')!
-  const rawMaskImg = rawMaskCtx.createImageData(maskW, maskH)
-
-  for (let i = 0; i < maskW * maskH; i++) {
-    const p = i * 4
-    // confData[i] 是前景人物機率 (0.0 ~ 1.0)
-    // 透過 S 曲線增強對比，確保主體飽滿且邊界平滑抗鋸齒
-    const prob = confData[i]
-    const alpha = Math.round(Math.max(0, Math.min(1, prob)) * 255)
-
-    rawMaskImg.data[p] = 255
-    rawMaskImg.data[p + 1] = 255
-    rawMaskImg.data[p + 2] = 255
-    rawMaskImg.data[p + 3] = alpha
-  }
-  rawMaskCtx.putImageData(rawMaskImg, 0, 0)
-
-  // 縮放遮罩至原圖尺寸
-  const fullMaskCanvas = document.createElement('canvas')
-  fullMaskCanvas.width = w
-  fullMaskCanvas.height = h
-  const fullMaskCtx = fullMaskCanvas.getContext('2d')!
-  fullMaskCtx.imageSmoothingEnabled = true
-  fullMaskCtx.drawImage(rawMaskCanvas, 0, 0, w, h)
+  // 依閾值計算遮罩畫布
+  const fullMaskCanvas = buildMaskFromConfidence(confData, maskW, maskH, w, h, threshold)
 
   // 套用遮罩產出透明背景圖
   const outCanvas = document.createElement('canvas')
@@ -267,5 +291,8 @@ export async function removeBackgroundAI(
   return {
     resultCanvas: outCanvas,
     maskCanvas: fullMaskCanvas,
+    confidenceData: confData,
+    maskWidth: maskW,
+    maskHeight: maskH,
   }
 }

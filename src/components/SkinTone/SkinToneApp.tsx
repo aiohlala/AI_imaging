@@ -13,12 +13,13 @@ type Status = 'empty' | 'editing' | 'processing' | 'done'
 export default function SkinToneApp() {
   const [status, setStatus] = useState<Status>('empty')
   const [image, setImage] = useState<HTMLImageElement | null>(null)
+  const [fileName, setFileName] = useState('image')
   const [resultCanvas, setResultCanvas] = useState<HTMLCanvasElement | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [maskCanvas, setMaskCanvas] = useState<HTMLCanvasElement | null>(null)
   const processingRef = useRef(false)
 
-  const handleImageLoaded = useCallback((img: HTMLImageElement) => {
+  const handleImageLoaded = useCallback((img: HTMLImageElement, name?: string) => {
     const mask = document.createElement('canvas')
     mask.width = img.naturalWidth
     mask.height = img.naturalHeight
@@ -26,6 +27,7 @@ export default function SkinToneApp() {
     setResultCanvas(null)
     setError(null)
     setImage(img)
+    setFileName(name || 'image')
     setStatus('editing')
   }, [])
 
@@ -36,7 +38,6 @@ export default function SkinToneApp() {
       setError(null)
       setStatus('processing')
 
-      // 使用 setTimeout 讓 UI 先渲染出 Spinner
       setTimeout(() => {
         try {
           const srcCanvas = document.createElement('canvas')
@@ -115,6 +116,7 @@ export default function SkinToneApp() {
       {status === 'done' && image && resultCanvas && (
         <SkinToneResult
           image={image}
+          fileName={fileName}
           resultCanvas={resultCanvas}
           onContinueEditing={() => setStatus('editing')}
           onReset={handleReset}

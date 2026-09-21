@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 
 interface ResultViewProps {
   image: HTMLImageElement
+  fileName?: string
   resultCanvas: HTMLCanvasElement
   /** 結果是否因大小限制被縮小過 */
   downscaled: boolean
@@ -9,9 +10,15 @@ interface ResultViewProps {
   onReset: () => void
 }
 
+function getBaseName(fileName?: string): string {
+  if (!fileName) return 'image'
+  return fileName.replace(/\.[^/.]+$/, '') || 'image'
+}
+
 /** 前 / 後對比檢視：拖曳中間滑桿比較原圖與去除後的結果 */
 export default function ResultView({
   image,
+  fileName,
   resultCanvas,
   downscaled,
   onContinueEditing,
@@ -40,7 +47,6 @@ export default function ResultView({
     return () => observer.disconnect()
   }, [resW, resH])
 
-  // 繪製兩張圖（若結果被縮小過，原圖也繪製成相同解析度以便對齊）
   useEffect(() => {
     if (displaySize.w === 0) return
     const before = beforeRef.current
@@ -68,7 +74,8 @@ export default function ResultView({
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = 'watermark-removed.png'
+      const base = getBaseName(fileName)
+      a.download = `${base}_wr.png`
       a.click()
       URL.revokeObjectURL(url)
     }, 'image/png')
@@ -120,7 +127,7 @@ export default function ResultView({
           繼續編輯
         </button>
         <button type="button" className="primary" onClick={downloadPng}>
-          下載 PNG
+          下載 PNG ({getBaseName(fileName)}_wr.png)
         </button>
       </div>
     </div>

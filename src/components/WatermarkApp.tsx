@@ -9,14 +9,13 @@ type Status = 'empty' | 'editing' | 'processing' | 'done'
 export default function WatermarkApp() {
   const [status, setStatus] = useState<Status>('empty')
   const [image, setImage] = useState<HTMLImageElement | null>(null)
+  const [fileName, setFileName] = useState('image')
   const [result, setResult] = useState<{ canvas: HTMLCanvasElement; downscaled: boolean } | null>(null)
   const [error, setError] = useState<string | null>(null)
-  // mask 畫布由 App 持有（state），切換階段時保留，「繼續編輯」可接著修改
   const [maskCanvas, setMaskCanvas] = useState<HTMLCanvasElement | null>(null)
-  // 避免使用者重複點擊造成重複處理
   const processingRef = useRef(false)
 
-  const handleImageLoaded = useCallback((img: HTMLImageElement) => {
+  const handleImageLoaded = useCallback((img: HTMLImageElement, name?: string) => {
     const mask = document.createElement('canvas')
     mask.width = img.naturalWidth
     mask.height = img.naturalHeight
@@ -24,7 +23,20 @@ export default function WatermarkApp() {
     setResult(null)
     setError(null)
     setImage(img)
+    setFileName(name || 'image')
     setStatus('editing')
+  }, [])
+
+  const handleCrop = useCallback((croppedImage: HTMLImageElement, croppedMask?: HTMLCanvasElement) => {
+    setImage(croppedImage)
+    if (croppedMask) {
+      setMaskCanvas(croppedMask)
+    } else {
+      const mask = document.createElement('canvas')
+      mask.width = croppedImage.naturalWidth
+      mask.height = croppedImage.naturalHeight
+      setMaskCanvas(mask)
+    }
   }, [])
 
   const handleProcess = useCallback(async () => {
@@ -69,6 +81,7 @@ export default function WatermarkApp() {
             maskCanvas={maskCanvas}
             onProcess={handleProcess}
             onBack={handleReset}
+            onCrop={handleCrop}
           />
         </>
       )}
@@ -84,6 +97,7 @@ export default function WatermarkApp() {
       {status === 'done' && image && result && (
         <ResultView
           image={image}
+          fileName={fileName}
           resultCanvas={result.canvas}
           downscaled={result.downscaled}
           onContinueEditing={() => setStatus('editing')}

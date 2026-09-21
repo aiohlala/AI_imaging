@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { autoScanWatermarks, smartClickWatermark } from '../lib/watermarkDetector'
+import ImageCropperModal from './ImageCropperModal'
 
 const MIN_BRUSH = 5
-const MAX_BRUSH = 100
+const MAX_BRUSH = 300
 /** 復原上限步數 */
 const MAX_UNDO = 30
 
@@ -24,6 +25,7 @@ interface MaskEditorProps {
   maskCanvas: HTMLCanvasElement
   onProcess: () => void
   onBack: () => void
+  onCrop: (newImage: HTMLImageElement, newMaskCanvas?: HTMLCanvasElement) => void
 }
 
 /** 在 ctx 上重放一筆（圓形筆刷 + 線段間補圓避免斷線） */
@@ -37,7 +39,6 @@ function drawStroke(ctx: CanvasRenderingContext2D, stroke: Stroke) {
   ctx.lineCap = 'round'
   ctx.lineJoin = 'round'
   const [first, ...rest] = stroke.points
-  // 起點補圓
   ctx.beginPath()
   ctx.arc(first.x, first.y, stroke.radius, 0, Math.PI * 2)
   ctx.fill()
@@ -50,7 +51,6 @@ function drawStroke(ctx: CanvasRenderingContext2D, stroke: Stroke) {
       prev = p
     }
     ctx.stroke()
-    // 終點補圓，確保轉折與收尾連續
     ctx.beginPath()
     ctx.arc(prev.x, prev.y, stroke.radius, 0, Math.PI * 2)
     ctx.fill()
@@ -71,7 +71,7 @@ function maskHasContent(canvas: HTMLCanvasElement): boolean {
   return false
 }
 
-export default function MaskEditor({ image, maskCanvas, onProcess, onBack }: MaskEditorProps) {
+export default function MaskEditor({ image, maskCanvas, onProcess, onBack, onCrop }: MaskEditorProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const baseCanvasRef = useRef<HTMLCanvasElement>(null)
   const overlayCanvasRef = useRef<HTMLCanvasElement>(null)
@@ -83,9 +83,18 @@ export default function MaskEditor({ image, maskCanvas, onProcess, onBack }: Mas
   const [brushSize, setBrushSize] = useState(30)
   const [eraser, setEraser] = useState(false)
   const [strokeCount, setStrokeCount] = useState(0)
-  // 掛載時若 mask 已有內容（例如從結果頁返回），直接啟用處理按鈕
   const [hasMask, setHasMask] = useState(() => maskHasContent(maskCanvas))
   const [displaySize, setDisplaySize] = useState({ w: 0, h: 0 })
+
+  // 模式選擇
+  const [drawMode, setDrawMode] = useState<'brush' | 'magic' | 'rect'>('brush')
+  // AI 點選圈選容許度 (閾值)
+  const [magicTolerance, setMagicTolerance] = useState(25)
+  const [isScanning, setIsScanning] = useState(false)
+  const [isCropping, setIsCropping] = useState(false)
+
+  const startPointRef = useRef<Point | null>(null)
+  const currentDragPointRef = useRef<Point | null>(null)
 
   const imgW = image.naturalWidth
   const imgH = image.naturalHeight
@@ -138,11 +147,6 @@ export default function MaskEditor({ image, maskCanvas, onProcess, onBack }: Mas
   }, [redrawOverlay])
 
   /** 將 pointer 事件的 client 座標換算成原圖解析度座標 */
-  const [drawMode, setDrawMode] = useState<'brush' | 'magic' | 'rect'>('brush')
-  const [isScanning, setIsScanning] = useState(false)
-  const startPointRef = useRef<Point | null>(null)
-  const currentDragPointRef = useRef<Point | null>(null)
-
   const toImageCoords = (e: React.PointerEvent): Point | null => {
     const overlay = overlayCanvasRef.current
     if (!overlay) return null
@@ -179,7 +183,7 @@ export default function MaskEditor({ image, maskCanvas, onProcess, onBack }: Mas
     ;(e.target as Element).setPointerCapture(e.pointerId)
 
     if (drawMode === 'magic') {
-      void smartClickWatermark(image, maskCanvas, p.x, p.y).then(() => {
+      void smartClickWatermark(image, maskCanvas, p.x, p.y, magicTolerance).then(() => {
         redrawOverlay()
         setHasMask(true)
       })
@@ -210,7 +214,6 @@ export default function MaskEditor({ image, maskCanvas, onProcess, onBack }: Mas
 
     if (drawMode === 'rect') {
       currentDragPointRef.current = p
-      // 繪製即時預覽虛線框
       redrawOverlay()
       const overlay = overlayCanvasRef.current
       if (overlay && startPointRef.current) {
@@ -280,7 +283,6 @@ export default function MaskEditor({ image, maskCanvas, onProcess, onBack }: Mas
         ctx.fillRect(x, y, w, h)
         ctx.restore()
 
-        // 轉換為四個頂點構成的 stroke 以支援 undo
         const rectStroke: Stroke = {
           points: [
             { x, y },
@@ -331,6 +333,13 @@ export default function MaskEditor({ image, maskCanvas, onProcess, onBack }: Mas
     const ctx = maskCanvas.getContext('2d')!
     ctx.clearRect(0, 0, maskCanvas.width, maskCanvas.height)
     redrawOverlay()
+  }
+
+  const handleApplyCrop = (croppedImg: HTMLImageElement, croppedMask?: HTMLCanvasElement) => {
+    strokesRef.current = []
+    setStrokeCount(0)
+    setIsCropping(false)
+    onCrop(croppedImg, croppedMask)
   }
 
   return (
@@ -385,8 +394,17 @@ export default function MaskEditor({ image, maskCanvas, onProcess, onBack }: Mas
           >
             🧹 橡皮擦
           </button>
+          <button
+            type="button"
+            className="tool-btn"
+            onClick={() => setIsCropping(true)}
+            title="裁切目前圖片尺寸"
+          >
+            ✂️ 裁切圖片
+          </button>
         </div>
 
+        {/* 筆刷大小滑桿（5px ~ 300px） */}
         {drawMode === 'brush' && (
           <label className="brush-control">
             筆刷大小
@@ -398,6 +416,21 @@ export default function MaskEditor({ image, maskCanvas, onProcess, onBack }: Mas
               onChange={(e) => setBrushSize(Number(e.target.value))}
             />
             <span className="brush-value">{brushSize}px</span>
+          </label>
+        )}
+
+        {/* AI 點選圈選容許度 (閾值) 滑桿 */}
+        {drawMode === 'magic' && (
+          <label className="brush-control" title="調整 AI 點選時擴散選取的敏感度">
+            選取容許度 (閾值)
+            <input
+              type="range"
+              min={5}
+              max={100}
+              value={magicTolerance}
+              onChange={(e) => setMagicTolerance(Number(e.target.value))}
+            />
+            <span className="brush-value">{magicTolerance}</span>
           </label>
         )}
 
@@ -436,6 +469,16 @@ export default function MaskEditor({ image, maskCanvas, onProcess, onBack }: Mas
           開始去除浮水印
         </button>
       </div>
+
+      {/* 裁切視窗 */}
+      {isCropping && (
+        <ImageCropperModal
+          image={image}
+          maskCanvas={maskCanvas}
+          onApply={handleApplyCrop}
+          onCancel={() => setIsCropping(false)}
+        />
+      )}
     </div>
   )
 }

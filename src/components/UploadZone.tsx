@@ -4,7 +4,7 @@ const ACCEPTED_TYPES = ['image/png', 'image/jpeg', 'image/webp']
 const ACCEPT_ATTR = 'image/png,image/jpeg,image/webp'
 
 interface UploadZoneProps {
-  onImageLoaded: (image: HTMLImageElement) => void
+  onImageLoaded: (image: HTMLImageElement, fileName?: string) => void
 }
 
 /** 檢查並載入圖片檔案，成功時回呼，失敗時拋出錯誤訊息 */
@@ -39,7 +39,7 @@ export default function UploadZone({ onImageLoaded }: UploadZoneProps) {
       setError(null)
       try {
         const img = await loadImageFile(file)
-        onImageLoaded(img)
+        onImageLoaded(img, file.name)
       } catch (e) {
         setError(e instanceof Error ? e.message : '圖片載入失敗。')
       }
@@ -55,7 +55,8 @@ export default function UploadZone({ onImageLoaded }: UploadZoneProps) {
       )
       if (item) {
         e.preventDefault()
-        void handleFile(item.getAsFile())
+        const file = item.getAsFile()
+        void handleFile(file)
       }
     }
     window.addEventListener('paste', onPaste)
