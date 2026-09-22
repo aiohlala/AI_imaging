@@ -417,3 +417,155 @@ export async function removeBackgroundAI(
     detectedType,
   }
 }
+
+export interface HeadExtractionResult {
+  headCanvas: HTMLCanvasElement
+  headBox: { x: number; y: number; width: number; height: number }
+  hasDetectedHead: boolean
+}
+
+/**
+ * 自動分離圖片中的人像頭部（頭髮 + 臉部 + 頸部邊緣，背景透明）
+ */
+export async function extractHead(
+  source: HTMLImageElement | HTMLCanvasElement,
+): Promise<HeadExtractionResult> {
+  const segmenter = await getMulticlassSegmenter()
+  const w = (source as HTMLImageElement).naturalWidth ?? (source as HTMLCanvasElement).width
+  const h = (source as HTMLImageElement).naturalHeight ?? (source as HTMLCanvasElement).height
+
+  const srcCanvas = document.createElement('canvas')
+  srcCanvas.width = w
+  srcCanvas.height = h
+  const srcCtx = srcCanvas.getContext('2d')!
+  srcCtx.drawImage(source, 0, 0, w, h)
+
+  const result = segmenter.segment(srcCanvas)
+  const categoryMask = result.categoryMask
+  if (!categoryMask) {
+    throw new Error('MediaPipe 分割失敗。')
+  }
+
+  const maskW = categoryMask.width
+  const maskH = categoryMask.height
+  const maskData = categoryMask.getAsUint8Array()
+
+  // 尋找頭部範圍 (cat === 1: hair, cat === 3: face-skin)
+  let minX = maskW, maxX = 0, minY = maskH, maxY = 0
+  let headPixels = 0
+
+  for (let y = 0; y < maskH; y++) {
+    for (let x = 0; x < maskW; x++) {
+      const cat = maskData[y * maskW + x]
+      if (cat === 1 || cat === 3) {
+        headPixels++
+        if (x < minX) minX = x
+        if (x > maxX) maxX = x
+        if (y < minY) minY = y
+        if (y > maxY) maxY = y
+      }
+    }
+  }
+
+  const hasDetectedHead = headPixels > 50
+
+  const maskCanvas = document.createElement('canvas')
+  maskCanvas.width = maskW
+  maskCanvas.height = maskH
+  const maskCtx = maskCanvas.getContext('2d')!
+  const maskImg = maskCtx.createImageData(maskW, maskH)
+
+  if (hasDetectedHead) {
+    // 頸部稍微往下延伸 12% 讓銜接更自然
+    const extendedMaxY = Math.min(maskH - 1, maxY + Math.round((maxY - minY) * 0.12))
+
+    for (let y = 0; y < maskH; y++) {
+      for (let x = 0; x < maskW; x++) {
+        const idx = y * maskW + x
+        const cat = maskData[idx]
+        const p = idx * 4
+
+        // 包含頭髮、臉部皮膚與頸部
+        if (
+          y >= minY &&
+          y <= extendedMaxY &&
+          (cat === 1 || cat === 3 || (cat > 0 && cat !== 4 && x >= minX && x <= maxX))
+        ) {
+          let alpha = 255
+          if (y > maxY) {
+            const progress = (y - maxY) / Math.max(1, extendedMaxY - maxY)
+            alpha = Math.round(255 * (1 - progress))
+          }
+          maskImg.data[p] = 255
+          maskImg.data[p + 1] = 255
+          maskImg.data[p + 2] = 255
+          maskImg.data[p + 3] = alpha
+        }
+      }
+    }
+  } else {
+    // 備用方案：未識別出真人頭部，以頂部橢圓區域作為頭部範圍
+    const cx = maskW / 2
+    const cy = maskH * 0.3
+    const rx = maskW * 0.32
+    const ry = maskH * 0.28
+
+    for (let y = 0; y < maskH; y++) {
+      for (let x = 0; x < maskW; x++) {
+        const dx = (x - cx) / rx
+        const dy = (y - cy) / ry
+        const d2 = dx * dx + dy * dy
+        const p = (y * maskW + x) * 4
+        if (d2 <= 1) {
+          const factor = d2 > 0.6 ? 1 - (d2 - 0.6) / 0.4 : 1
+          const alpha = Math.round(255 * factor)
+          maskImg.data[p] = 255
+          maskImg.data[p + 1] = 255
+          maskImg.data[p + 2] = 255
+          maskImg.data[p + 3] = alpha
+        }
+      }
+    }
+  }
+
+  maskCtx.putImageData(maskImg, 0, 0)
+
+  // 縮放遮罩至原圖尺寸
+  const fullMaskCanvas = document.createElement('canvas')
+  fullMaskCanvas.width = w
+  fullMaskCanvas.height = h
+  const fullMaskCtx = fullMaskCanvas.getContext('2d')!
+  fullMaskCtx.imageSmoothingEnabled = true
+  fullMaskCtx.drawImage(maskCanvas, 0, 0, w, h)
+
+  // 產出透明背景頭部圖層
+  const headCanvas = document.createElement('canvas')
+  headCanvas.width = w
+  headCanvas.height = h
+  const headCtx = headCanvas.getContext('2d')!
+  headCtx.drawImage(srcCanvas, 0, 0)
+  headCtx.globalCompositeOperation = 'destination-in'
+  headCtx.drawImage(fullMaskCanvas, 0, 0)
+
+  const scaleX = w / maskW
+  const scaleY = h / maskH
+  const headBox = hasDetectedHead
+    ? {
+        x: Math.round(minX * scaleX),
+        y: Math.round(minY * scaleY),
+        width: Math.round((maxX - minX) * scaleX),
+        height: Math.round((maxY - minY) * scaleY),
+      }
+    : {
+        x: Math.round(w * 0.18),
+        y: Math.round(h * 0.05),
+        width: Math.round(w * 0.64),
+        height: Math.round(h * 0.55),
+      }
+
+  return {
+    headCanvas,
+    headBox,
+    hasDetectedHead,
+  }
+}
