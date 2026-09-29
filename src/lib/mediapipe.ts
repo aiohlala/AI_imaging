@@ -1,3 +1,4 @@
+import { rgbToOklab, computeLabStats, type LabStats } from './colorTransfer'
 /**
  * Google MediaPipe Tasks Vision 純前端本機 AI 封裝
  * 100% 在瀏覽器本機執行 WebAssembly/WebGPU，圖片絕不上傳。
@@ -567,5 +568,122 @@ export async function extractHead(
     headCanvas,
     headBox,
     hasDetectedHead,
+  }
+}
+
+export interface TargetHeadAnalysis {
+  headBox: { x: number; y: number; width: number; height: number }
+  center: { x: number; y: number }
+  hasHead: boolean
+  bodySkinStats?: LabStats
+}
+
+/**
+ * 自動分析目標底圖中的人體結構：取得原生頭部邊界、中心座標與身體膚色統計
+ */
+export async function analyzeTargetHead(
+  target: HTMLImageElement | HTMLCanvasElement,
+): Promise<TargetHeadAnalysis> {
+  const segmenter = await getMulticlassSegmenter()
+  const w = (target as HTMLImageElement).naturalWidth ?? (target as HTMLCanvasElement).width
+  const h = (target as HTMLImageElement).naturalHeight ?? (target as HTMLCanvasElement).height
+
+  const srcCanvas = document.createElement('canvas')
+  srcCanvas.width = w
+  srcCanvas.height = h
+  const srcCtx = srcCanvas.getContext('2d')!
+  srcCtx.drawImage(target, 0, 0, w, h)
+
+  const result = segmenter.segment(srcCanvas)
+  const categoryMask = result.categoryMask
+  if (!categoryMask) {
+    throw new Error('MediaPipe 分析失敗。')
+  }
+
+  const maskW = categoryMask.width
+  const maskH = categoryMask.height
+  const maskData = categoryMask.getAsUint8Array()
+
+  let minX = maskW, maxX = 0, minY = maskH, maxY = 0
+  let headPixels = 0
+
+  // 採樣身體膚色（cat === 2）或臉部膚色（cat === 3）
+  const bodySkinRgb: [number, number, number][] = []
+  const faceSkinRgb: [number, number, number][] = []
+
+  const sampleCanvas = document.createElement('canvas')
+  sampleCanvas.width = maskW
+  sampleCanvas.height = maskH
+  const sCtx = sampleCanvas.getContext('2d')!
+  sCtx.drawImage(srcCanvas, 0, 0, maskW, maskH)
+  const sImgData = sCtx.getImageData(0, 0, maskW, maskH).data
+
+  for (let y = 0; y < maskH; y++) {
+    for (let x = 0; x < maskW; x++) {
+      const idx = y * maskW + x
+      const cat = maskData[idx]
+      if (cat === 1 || cat === 3) {
+        headPixels++
+        if (x < minX) minX = x
+        if (x > maxX) maxX = x
+        if (y < minY) minY = y
+        if (y > maxY) maxY = y
+      }
+
+      const p = idx * 4
+      if (cat === 2) {
+        bodySkinRgb.push([sImgData[p], sImgData[p + 1], sImgData[p + 2]])
+      } else if (cat === 3) {
+        faceSkinRgb.push([sImgData[p], sImgData[p + 1], sImgData[p + 2]])
+      }
+    }
+  }
+
+  const hasHead = headPixels > 40
+  const scaleX = w / maskW
+  const scaleY = h / maskH
+
+  const headBox = hasHead
+    ? {
+        x: Math.round(minX * scaleX),
+        y: Math.round(minY * scaleY),
+        width: Math.round((maxX - minX) * scaleX),
+        height: Math.round((maxY - minY) * scaleY),
+      }
+    : {
+        x: Math.round(w * 0.25),
+        y: Math.round(h * 0.05),
+        width: Math.round(w * 0.5),
+        height: Math.round(h * 0.4),
+      }
+
+  const center = {
+    x: Math.round(headBox.x + headBox.width / 2),
+    y: Math.round(headBox.y + headBox.height / 2),
+  }
+
+  // 計算參考膚色統計值 (優先使用身體/脖子膚色，若無則使用臉部膚色)
+  const skinSamples = bodySkinRgb.length >= 15 ? bodySkinRgb : (faceSkinRgb.length >= 15 ? faceSkinRgb : [])
+  let bodySkinStats: LabStats | undefined
+
+  if (skinSamples.length > 0) {
+    const labArray = new Float32Array(skinSamples.length * 3)
+    const validIndices: number[] = []
+    for (let i = 0; i < skinSamples.length; i++) {
+      const [r, g, b] = skinSamples[i]
+      const [L, a, bVal] = rgbToOklab(r, g, b)
+      labArray[i * 3] = L
+      labArray[i * 3 + 1] = a
+      labArray[i * 3 + 2] = bVal
+      validIndices.push(i)
+    }
+    bodySkinStats = computeLabStats(labArray, validIndices)
+  }
+
+  return {
+    headBox,
+    center,
+    hasHead,
+    bodySkinStats,
   }
 }
