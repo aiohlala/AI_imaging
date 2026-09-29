@@ -83,14 +83,15 @@ export default function HeadSwapViewer({
     }
   }, [headImage, targetImage])
 
-  // 2. 自適應畫布容器尺寸
+  // 2. 自適應畫布容器尺寸 (等比縮放適應視窗與容器)
   const updateDisplaySize = useCallback(() => {
     const container = containerRef.current
     if (!container || !targetImage) return
     const containerWidth = container.clientWidth
-    const maxH = window.innerHeight * 0.62
-    const targetW = targetImage.naturalWidth
-    const targetH = targetImage.naturalHeight
+    if (containerWidth <= 0) return
+    const maxH = Math.max(300, window.innerHeight * 0.62)
+    const targetW = targetImage.naturalWidth || 400
+    const targetH = targetImage.naturalHeight || 520
 
     const scaleByW = containerWidth / targetW
     const scaleByH = maxH / targetH
@@ -102,22 +103,24 @@ export default function HeadSwapViewer({
     })
   }, [targetImage])
 
+  // 當 loading 結束、容器掛載或尺寸變化時監聽
   useEffect(() => {
+    if (loading || !extractedHead || !targetAnalysis) return
     updateDisplaySize()
     const container = containerRef.current
     if (!container) return
     const observer = new ResizeObserver(() => updateDisplaySize())
     observer.observe(container)
     return () => observer.disconnect()
-  }, [updateDisplaySize])
+  }, [updateDisplaySize, loading, extractedHead, targetAnalysis])
 
   // 3. 繪製畫布（包含前後對比渲染）
   const renderCanvas = useCallback(() => {
     const canvas = canvasRef.current
-    if (!canvas || !extractedHead || !targetAnalysis || displaySize.w === 0) return
+    if (!canvas || !extractedHead || !targetAnalysis) return
 
-    const targetW = targetImage.naturalWidth
-    const targetH = targetImage.naturalHeight
+    const targetW = targetImage.naturalWidth || 400
+    const targetH = targetImage.naturalHeight || 520
 
     canvas.width = targetW
     canvas.height = targetH
@@ -180,7 +183,7 @@ export default function HeadSwapViewer({
     ctx.textBaseline = 'middle'
     ctx.fillText('⬌', splitX, handleY)
     ctx.restore()
-  }, [extractedHead, targetAnalysis, targetImage, config, compareSplit, enableCompare, displaySize.w])
+  }, [extractedHead, targetAnalysis, targetImage, config, compareSplit, enableCompare])
 
   useEffect(() => {
     renderCanvas()
@@ -191,11 +194,12 @@ export default function HeadSwapViewer({
     const canvas = canvasRef.current
     if (!canvas) return
     const rect = canvas.getBoundingClientRect()
+    if (rect.width <= 0) return
     const clickX = e.clientX - rect.left
     const currentSplitScreenX = (rect.width * compareSplit) / 100
 
-    // 若點擊在中線附近 24px 內，則視為拖曳對比分割線
-    if (enableCompare && Math.abs(clickX - currentSplitScreenX) < 24) {
+    // 若點擊在中線附近 28px 內，則視為拖曳對比分割線
+    if (enableCompare && Math.abs(clickX - currentSplitScreenX) < 28) {
       isDraggingSplitRef.current = true
       canvas.setPointerCapture(e.pointerId)
       return
@@ -215,17 +219,17 @@ export default function HeadSwapViewer({
   const handlePointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current
     if (!canvas) return
+    const rect = canvas.getBoundingClientRect()
+    if (rect.width <= 0) return
 
     if (isDraggingSplitRef.current) {
-      const rect = canvas.getBoundingClientRect()
       const ratio = Math.max(0, Math.min(100, Math.round(((e.clientX - rect.left) / rect.width) * 100)))
       setCompareSplit(ratio)
       return
     }
 
     if (isDraggingHeadRef.current) {
-      const rect = canvas.getBoundingClientRect()
-      const scaleCoord = targetImage.naturalWidth / rect.width
+      const scaleCoord = (targetImage.naturalWidth || canvas.width) / rect.width
       const dx = (e.clientX - dragStartRef.current.clientX) * scaleCoord
       const dy = (e.clientY - dragStartRef.current.clientY) * scaleCoord
 
@@ -394,13 +398,13 @@ export default function HeadSwapViewer({
             <span className="drag-hint-tip">💡 在畫布上按住滑鼠可直接拖曳微調頭部位置</span>
           </div>
 
-          {/* 畫布容器 */}
+          {/* 畫布視窗 */}
           <div ref={containerRef} className="headswap-canvas-viewport">
             <div
               className="headswap-canvas-stage interactive"
               style={{
-                width: displaySize.w || undefined,
-                height: displaySize.h || undefined,
+                width: displaySize.w > 0 ? displaySize.w : undefined,
+                height: displaySize.h > 0 ? displaySize.h : undefined,
               }}
             >
               <canvas
