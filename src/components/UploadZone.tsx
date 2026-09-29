@@ -1,24 +1,42 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { isAnimatedGif, decodeGif, type GifContext } from '../lib/gifInpaint'
 
-const ACCEPTED_TYPES = ['image/png', 'image/jpeg', 'image/webp']
-const ACCEPT_ATTR = 'image/png,image/jpeg,image/webp'
+const ACCEPTED_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif']
+const ACCEPT_ATTR = 'image/png,image/jpeg,image/webp,image/gif'
 
 interface UploadZoneProps {
-  onImageLoaded: (image: HTMLImageElement, fileName?: string) => void
+  onImageLoaded: (image: HTMLImageElement, fileName?: string, gifContext?: GifContext) => void
 }
 
-/** 檢查並載入圖片檔案，成功時回呼，失敗時拋出錯誤訊息 */
-function loadImageFile(file: File): Promise<HTMLImageElement> {
-  return new Promise((resolve, reject) => {
-    if (!ACCEPTED_TYPES.includes(file.type)) {
-      reject(new Error('不支援的檔案格式，請使用 PNG、JPG 或 WebP 圖片。'))
-      return
-    }
-    const url = URL.createObjectURL(file)
+/** 檢查並載入圖片或動態 GIF 檔案 */
+async function loadFile(file: File): Promise<{ image: HTMLImageElement; gifContext?: GifContext }> {
+  if (!ACCEPTED_TYPES.includes(file.type)) {
+    throw new Error('不支援的檔案格式，請使用 PNG、JPG、WebP 或 GIF 動態圖。')
+  }
+
+  const arrayBuffer = await file.arrayBuffer()
+
+  // 1. 若為動態 GIF (幀數 > 1)
+  if (isAnimatedGif(arrayBuffer)) {
+    const gifContext = decodeGif(arrayBuffer)
+    const firstFrameCanvas = gifContext.frames[0].canvas
     const img = new Image()
+    img.src = firstFrameCanvas.toDataURL('image/png')
+    await new Promise<void>((resolve, reject) => {
+      img.onload = () => resolve()
+      img.onerror = () => reject(new Error('GIF 影格解析失敗'))
+    })
+    return { image: img, gifContext }
+  }
+
+  // 2. 常規靜態圖片 (PNG / JPG / WebP / 單幀 GIF)
+  const blob = new Blob([arrayBuffer], { type: file.type })
+  const url = URL.createObjectURL(blob)
+  const img = new Image()
+  await new Promise<void>((resolve, reject) => {
     img.onload = () => {
       URL.revokeObjectURL(url)
-      resolve(img)
+      resolve()
     }
     img.onerror = () => {
       URL.revokeObjectURL(url)
@@ -26,22 +44,27 @@ function loadImageFile(file: File): Promise<HTMLImageElement> {
     }
     img.src = url
   })
+  return { image: img }
 }
 
 export default function UploadZone({ onImageLoaded }: UploadZoneProps) {
   const inputRef = useRef<HTMLInputElement>(null)
   const [dragging, setDragging] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [loading, setLoading] = useState(false)
 
   const handleFile = useCallback(
     async (file: File | undefined | null) => {
       if (!file) return
       setError(null)
+      setLoading(true)
       try {
-        const img = await loadImageFile(file)
-        onImageLoaded(img, file.name)
+        const { image, gifContext } = await loadFile(file)
+        onImageLoaded(image, file.name, gifContext)
       } catch (e) {
         setError(e instanceof Error ? e.message : '圖片載入失敗。')
+      } finally {
+        setLoading(false)
       }
     },
     [onImageLoaded],
@@ -69,7 +92,7 @@ export default function UploadZone({ onImageLoaded }: UploadZoneProps) {
         className={`upload-zone${dragging ? ' dragging' : ''}`}
         role="button"
         tabIndex={0}
-        onClick={() => inputRef.current?.click()}
+        onClick={() => !loading && inputRef.current?.click()}
         onKeyDown={(e) => {
           if (e.key === 'Enter' || e.key === ' ') inputRef.current?.click()
         }}
@@ -91,9 +114,11 @@ export default function UploadZone({ onImageLoaded }: UploadZoneProps) {
             <path d="m21 15-5-5L5 21" />
           </svg>
         </div>
-        <p className="upload-title">拖曳圖片到這裡，或點擊選擇檔案</p>
+        <p className="upload-title">
+          {loading ? '正在解析檔案與動態影格…' : '拖曳圖片到這裡，或點擊選擇檔案'}
+        </p>
         <p className="upload-hint">
-          支援 PNG / JPG / WebP，也可以直接 Ctrl / Cmd + V 貼上圖片
+          支援 PNG / JPG / WebP / <span className="highlight-gif">動態 GIF</span>，也可直接 Ctrl / Cmd + V 貼上
         </p>
         <input
           ref={inputRef}
