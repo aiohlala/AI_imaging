@@ -1,72 +1,81 @@
-import { useCallback, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import { HEAD_PRESETS, TARGET_PRESETS, type PresetItem } from './examplePresets'
-
-const ACCEPTED_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif']
-const ACCEPT_ATTR = 'image/png,image/jpeg,image/webp,image/gif'
+import ImageCropperModal from '../ImageCropperModal'
 
 interface HeadSwapUploadProps {
   onImagesReady: (
-    headImg: HTMLImageElement,
+    headImage: HTMLImageElement,
     headName: string,
-    targetImg: HTMLImageElement,
+    targetImage: HTMLImageElement,
     targetName: string,
   ) => void
 }
 
-function loadImageFile(file: File): Promise<HTMLImageElement> {
+interface ImageSlot {
+  img: HTMLImageElement
+  name: string
+}
+
+const ACCEPT_ATTR = 'image/png,image/jpeg,image/webp,image/gif'
+
+function loadDataUrlImage(src: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
-    if (!ACCEPTED_TYPES.includes(file.type)) {
-      reject(new Error('不支援的格式，請使用 PNG、JPG、WebP 或 GIF。'))
-      return
-    }
-    const url = URL.createObjectURL(file)
     const img = new Image()
+    img.crossOrigin = 'anonymous'
     img.onload = () => resolve(img)
-    img.onerror = () => reject(new Error('圖片載入失敗。'))
-    img.src = url
+    img.onerror = () => reject(new Error('圖片載入失敗'))
+    img.src = src
   })
 }
 
-function loadDataUrlImage(dataUrl: string): Promise<HTMLImageElement> {
+function readFileAsImage(file: File): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
-    const img = new Image()
-    img.onload = () => resolve(img)
-    img.onerror = () => reject(new Error('範例圖載入失敗。'))
-    img.src = dataUrl
+    const reader = new FileReader()
+    reader.onload = () => {
+      const img = new Image()
+      img.onload = () => resolve(img)
+      img.onerror = () => reject(new Error('無法解析選取的圖片檔案'))
+      img.src = reader.result as string
+    }
+    reader.onerror = () => reject(new Error('讀取檔案錯誤'))
+    reader.readAsDataURL(file)
   })
 }
 
 export default function HeadSwapUpload({ onImagesReady }: HeadSwapUploadProps) {
-  const [head, setHead] = useState<{ img: HTMLImageElement; name: string } | null>(null)
-  const [target, setTarget] = useState<{ img: HTMLImageElement; name: string } | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  const [head, setHead] = useState<ImageSlot | null>(null)
+  const [target, setTarget] = useState<ImageSlot | null>(null)
   const [dragHead, setDragHead] = useState(false)
   const [dragTarget, setDragTarget] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  // 裁切視窗狀態
+  const [croppingTarget, setCroppingTarget] = useState<'head' | 'target' | null>(null)
 
   const inputRefHead = useRef<HTMLInputElement>(null)
   const inputRefTarget = useRef<HTMLInputElement>(null)
 
-  const handleHeadFile = useCallback(async (file: File | undefined | null) => {
+  const handleHeadFile = async (file?: File) => {
     if (!file) return
     setError(null)
     try {
-      const img = await loadImageFile(file)
-      setHead({ img, name: file.name || 'head_image' })
+      const img = await readFileAsImage(file)
+      setHead({ img, name: file.name })
     } catch (e) {
-      setError(e instanceof Error ? e.message : '頭像來源載入失敗。')
+      setError(e instanceof Error ? e.message : '上傳頭像失敗。')
     }
-  }, [])
+  }
 
-  const handleTargetFile = useCallback(async (file: File | undefined | null) => {
+  const handleTargetFile = async (file?: File) => {
     if (!file) return
     setError(null)
     try {
-      const img = await loadImageFile(file)
-      setTarget({ img, name: file.name || 'target_image' })
+      const img = await readFileAsImage(file)
+      setTarget({ img, name: file.name })
     } catch (e) {
-      setError(e instanceof Error ? e.message : '目標身型載入失敗。')
+      setError(e instanceof Error ? e.message : '上傳身型底圖失敗。')
     }
-  }, [])
+  }
 
   const handleSelectHeadPreset = async (preset: PresetItem) => {
     setError(null)
@@ -143,16 +152,30 @@ export default function HeadSwapUpload({ onImagesReady }: HeadSwapUploadProps) {
                     {head.img.naturalWidth} × {head.img.naturalHeight} px
                   </span>
                 </div>
-                <button
-                  type="button"
-                  className="card-remove-btn"
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    setHead(null)
-                  }}
-                >
-                  ✕ 更換
-                </button>
+                <div className="card-actions-group">
+                  <button
+                    type="button"
+                    className="card-action-btn crop-btn"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setCroppingTarget('head')
+                    }}
+                    title="裁切頭像圖片"
+                  >
+                    ✂️ 裁切
+                  </button>
+                  <button
+                    type="button"
+                    className="card-action-btn remove-btn"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setHead(null)
+                    }}
+                    title="更換頭像"
+                  >
+                    ✕ 更換
+                  </button>
+                </div>
               </div>
             ) : (
               <div className="card-empty">
@@ -238,16 +261,30 @@ export default function HeadSwapUpload({ onImagesReady }: HeadSwapUploadProps) {
                     {target.img.naturalWidth} × {target.img.naturalHeight} px
                   </span>
                 </div>
-                <button
-                  type="button"
-                  className="card-remove-btn"
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    setTarget(null)
-                  }}
-                >
-                  ✕ 更換
-                </button>
+                <div className="card-actions-group">
+                  <button
+                    type="button"
+                    className="card-action-btn crop-btn"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setCroppingTarget('target')
+                    }}
+                    title="裁切身型底圖"
+                  >
+                    ✂️ 裁切
+                  </button>
+                  <button
+                    type="button"
+                    className="card-action-btn remove-btn"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setTarget(null)
+                    }}
+                    title="更換底圖"
+                  >
+                    ✕ 更換
+                  </button>
+                </div>
               </div>
             ) : (
               <div className="card-empty">
@@ -303,6 +340,29 @@ export default function HeadSwapUpload({ onImagesReady }: HeadSwapUploadProps) {
           🔒 100% 瀏覽器本機記憶體運算 • 無歷史儲存 • 關閉或重新整理分頁資料即刻清空
         </p>
       </div>
+
+      {/* 內建影像裁切彈跳視窗 (同其他功能) */}
+      {croppingTarget === 'head' && head && (
+        <ImageCropperModal
+          image={head.img}
+          onApply={(croppedImg) => {
+            setHead({ img: croppedImg, name: `${head.name}_crop` })
+            setCroppingTarget(null)
+          }}
+          onCancel={() => setCroppingTarget(null)}
+        />
+      )}
+
+      {croppingTarget === 'target' && target && (
+        <ImageCropperModal
+          image={target.img}
+          onApply={(croppedImg) => {
+            setTarget({ img: croppedImg, name: `${target.name}_crop` })
+            setCroppingTarget(null)
+          }}
+          onCancel={() => setCroppingTarget(null)}
+        />
+      )}
     </div>
   )
 }

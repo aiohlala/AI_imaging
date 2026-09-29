@@ -20,6 +20,11 @@ export default function HeadSwapApp() {
     setTargetName(tName)
   }
 
+  const handleUpdateImages = (newHead?: HTMLImageElement, newTarget?: HTMLImageElement) => {
+    if (newHead) setHeadImage(newHead)
+    if (newTarget) setTargetImage(newTarget)
+  }
+
   const handleReset = () => {
     setHeadImage(null)
     setHeadName('')
@@ -38,6 +43,7 @@ export default function HeadSwapApp() {
           targetImage={targetImage}
           targetName={targetName}
           onReset={handleReset}
+          onUpdateImages={handleUpdateImages}
         />
       )}
     </div>

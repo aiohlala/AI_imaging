@@ -11,6 +11,7 @@ import {
   DEFAULT_HEAD_SWAP_CONFIG,
   type HeadSwapConfig,
 } from '../../lib/headSwap'
+import ImageCropperModal from '../ImageCropperModal'
 
 interface HeadSwapViewerProps {
   headImage: HTMLImageElement
@@ -18,6 +19,7 @@ interface HeadSwapViewerProps {
   targetImage: HTMLImageElement
   targetName: string
   onReset: () => void
+  onUpdateImages?: (newHead?: HTMLImageElement, newTarget?: HTMLImageElement) => void
 }
 
 export default function HeadSwapViewer({
@@ -26,6 +28,7 @@ export default function HeadSwapViewer({
   targetImage,
   targetName,
   onReset,
+  onUpdateImages,
 }: HeadSwapViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -36,6 +39,9 @@ export default function HeadSwapViewer({
   const [extractedHead, setExtractedHead] = useState<HeadExtractionResult | null>(null)
   const [targetAnalysis, setTargetAnalysis] = useState<TargetHeadAnalysis | null>(null)
   const [config, setConfig] = useState<HeadSwapConfig>(DEFAULT_HEAD_SWAP_CONFIG)
+
+  // 裁切視窗狀態 ('target' | 'head' | null)
+  const [cropTarget, setCropTarget] = useState<'target' | 'head' | null>(null)
 
   // 前後對比滑桿 (0% ~ 100%，預設 50%)
   const [compareSplit, setCompareSplit] = useState(50)
@@ -70,7 +76,10 @@ export default function HeadSwapViewer({
         if (canceled) return
         setExtractedHead(hResult)
         setTargetAnalysis(tAnalysis)
-        setConfig(DEFAULT_HEAD_SWAP_CONFIG)
+        setConfig((prev) => ({
+          ...DEFAULT_HEAD_SWAP_CONFIG,
+          flipH: prev.flipH, // 保留使用者選擇的翻轉狀態
+        }))
       } catch (err) {
         if (canceled) return
         console.error(err)
@@ -87,7 +96,6 @@ export default function HeadSwapViewer({
 
   // 2. 獨立快取「已完成 OKLab 膚色調和之頭像畫布」
   // 核心效能關鍵：只有在膚色開關、調和強度或羽化變動時才重算！
-  // 在拖曳位移、縮放、旋轉或滑動對比時直接複用此畫布，單幀耗時由 150ms 降至 0.2ms！
   const cachedHarmonizedHead = useMemo(() => {
     if (!extractedHead || !targetAnalysis) return null
     return prepareHarmonizedHead(extractedHead.headCanvas, targetAnalysis, config)
@@ -129,7 +137,7 @@ export default function HeadSwapViewer({
     return () => observer.disconnect()
   }, [updateDisplaySize, loading, extractedHead, targetAnalysis])
 
-  // 4. 即時繪製畫布（秒級微秒 GPU 渲染）
+  // 4. 即時繪製畫布（微秒級 GPU 硬體加速渲染）
   const renderCanvas = useCallback(() => {
     const canvas = canvasRef.current
     if (!canvas || !extractedHead || !targetAnalysis || !cachedHarmonizedHead) return
@@ -144,7 +152,7 @@ export default function HeadSwapViewer({
     const ctx = canvas.getContext('2d')!
     ctx.clearRect(0, 0, targetW, targetH)
 
-    // A. 預備離線合成畫布 (可重複使用 Buffer，避免頻繁 GC 垃圾回收造成卡頓)
+    // A. 預備離線合成畫布 Buffer
     let offscreen = offscreenCanvasRef.current
     if (!offscreen) {
       offscreen = document.createElement('canvas')
@@ -160,7 +168,7 @@ export default function HeadSwapViewer({
     // 1. 底圖
     offCtx.drawImage(targetImage, 0, 0, targetW, targetH)
 
-    // 2. 疊加頭部 (極速 GPU drawImage 變形)
+    // 2. 疊加頭部 (包含左右水平翻轉 scaleX)
     const baseScale = targetAnalysis.hasHead && extractedHead.headBox.width > 0
       ? (targetAnalysis.headBox.width / extractedHead.headBox.width)
       : (targetW * 0.38) / Math.max(1, extractedHead.headBox.width)
@@ -176,7 +184,9 @@ export default function HeadSwapViewer({
     if (config.rotation !== 0) {
       offCtx.rotate((config.rotation * Math.PI) / 180)
     }
-    offCtx.scale(finalScale, finalScale)
+    const scaleX = config.flipH ? -finalScale : finalScale
+    const scaleY = finalScale
+    offCtx.scale(scaleX, scaleY)
     offCtx.drawImage(cachedHarmonizedHead, -srcHeadCenterX, -srcHeadCenterY)
     offCtx.restore()
 
@@ -238,6 +248,7 @@ export default function HeadSwapViewer({
     config.offsetX,
     config.offsetY,
     config.rotation,
+    config.flipH,
     compareSplit,
     enableCompare,
   ])
@@ -246,7 +257,7 @@ export default function HeadSwapViewer({
     renderCanvas()
   }, [renderCanvas])
 
-  // 5. requestAnimationFrame 流暢指針拖曳 (Zero-Lag Dragging)
+  // 5. requestAnimationFrame 流暢指針拖曳
   const handlePointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current
     if (!canvas) return
@@ -344,6 +355,7 @@ export default function HeadSwapViewer({
       offsetX: 0,
       offsetY: 0,
       rotation: 0,
+      flipH: false,
     }))
   }
 
@@ -362,6 +374,22 @@ export default function HeadSwapViewer({
         </div>
 
         <div className="top-nav-actions">
+          <button
+            type="button"
+            className="btn-nav-outline"
+            onClick={() => setCropTarget('target')}
+            title="裁切底圖身型比例"
+          >
+            ✂️ 裁切底圖
+          </button>
+          <button
+            type="button"
+            className="btn-nav-outline"
+            onClick={() => setCropTarget('head')}
+            title="裁切頭部人像來源"
+          >
+            ✂️ 裁切頭像
+          </button>
           <button
             type="button"
             className={`btn-toggle-compare${enableCompare ? ' active' : ''}`}
@@ -396,7 +424,7 @@ export default function HeadSwapViewer({
         <>
           {/* 微調控制器列 */}
           <div className="headswap-controls-bar">
-            {/* 頭部縮放 */}
+            {/* 頭部大小 */}
             <label className="ctrl-item" title="調整頭部大小比例">
               <span className="ctrl-name">頭部大小</span>
               <input
@@ -409,6 +437,17 @@ export default function HeadSwapViewer({
               />
               <span className="ctrl-val">{Math.round(config.scale * 100)}%</span>
             </label>
+
+            {/* 1. 頭部左右水平翻轉按鈕 (緊鄰頭部大小) */}
+            <button
+              type="button"
+              className={`ctrl-flip-btn${config.flipH ? ' active' : ''}`}
+              onClick={() => setConfig((prev) => ({ ...prev, flipH: !prev.flipH }))}
+              title="將頭部左右水平鏡射翻轉，完美匹配身體朝向"
+            >
+              <span className="flip-icon">⇄</span>
+              <span>左右翻轉</span>
+            </button>
 
             {/* 旋轉角度 */}
             <label className="ctrl-item" title="調整頭部傾斜旋轉角度">
@@ -495,6 +534,29 @@ export default function HeadSwapViewer({
             </p>
           </div>
         </>
+      )}
+
+      {/* 2. 成果檢視時內建裁切功能 (可裁切底圖或頭像) */}
+      {cropTarget === 'target' && (
+        <ImageCropperModal
+          image={targetImage}
+          onApply={(croppedImg) => {
+            setCropTarget(null)
+            if (onUpdateImages) onUpdateImages(undefined, croppedImg)
+          }}
+          onCancel={() => setCropTarget(null)}
+        />
+      )}
+
+      {cropTarget === 'head' && (
+        <ImageCropperModal
+          image={headImage}
+          onApply={(croppedImg) => {
+            setCropTarget(null)
+            if (onUpdateImages) onUpdateImages(croppedImg, undefined)
+          }}
+          onCancel={() => setCropTarget(null)}
+        />
       )}
     </div>
   )

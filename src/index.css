@@ -1806,3 +1806,77 @@ button.active {
   color: #64748b;
   margin: 0;
 }
+
+/* 左右翻轉按鈕樣式 */
+.ctrl-flip-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: rgba(255, 255, 255, 0.07);
+  color: #cbd5e1;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 8px;
+  padding: 5px 12px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  user-select: none;
+}
+
+.ctrl-flip-btn:hover {
+  background: rgba(99, 102, 241, 0.18);
+  border-color: rgba(99, 102, 241, 0.4);
+  color: #e0e7ff;
+}
+
+.ctrl-flip-btn.active {
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  border-color: #a5b4fc;
+  color: #ffffff;
+  box-shadow: 0 0 12px rgba(99, 102, 241, 0.45);
+}
+
+.ctrl-flip-btn .flip-icon {
+  font-size: 14px;
+}
+
+/* 卡片操作按鈕群組 (裁切 + 更換) */
+.card-actions-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.card-action-btn {
+  border-radius: 6px;
+  font-size: 12px;
+  padding: 4px 10px;
+  cursor: pointer;
+  font-weight: 500;
+  transition: all 0.2s ease;
+}
+
+.card-action-btn.crop-btn {
+  background: rgba(14, 165, 233, 0.15);
+  border: 1px solid rgba(14, 165, 233, 0.35);
+  color: #7dd3fc;
+}
+
+.card-action-btn.crop-btn:hover {
+  background: rgba(14, 165, 233, 0.3);
+  border-color: #38bdf8;
+  color: #ffffff;
+}
+
+.card-action-btn.remove-btn {
+  background: rgba(239, 68, 68, 0.15);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  color: #fca5a5;
+}
+
+.card-action-btn.remove-btn:hover {
+  background: rgba(239, 68, 68, 0.3);
+  color: #ffffff;
+}

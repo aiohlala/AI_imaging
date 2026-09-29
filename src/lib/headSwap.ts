@@ -19,6 +19,8 @@ export interface HeadSwapConfig {
   harmonizeSkin: boolean
   /** 膚色融合強度 (0.0 ~ 1.0) */
   harmonizeStrength: number
+  /** 頭部左右水平翻轉 */
+  flipH: boolean
 }
 
 export const DEFAULT_HEAD_SWAP_CONFIG: HeadSwapConfig = {
@@ -29,6 +31,7 @@ export const DEFAULT_HEAD_SWAP_CONFIG: HeadSwapConfig = {
   feather: 14,
   harmonizeSkin: true,
   harmonizeStrength: 0.85,
+  flipH: false,
 }
 
 /**
@@ -103,13 +106,15 @@ export function renderHeadSwap(
   const destCenterX = targetAnalysis.center.x + config.offsetX
   const destCenterY = targetAnalysis.center.y + config.offsetY
 
-  // 5. 疊加圖 A 頭部（平移、旋轉、縮放）
+  // 5. 疊加圖 A 頭部（平移、旋轉、縮放、左右水平翻轉）
   ctx.save()
   ctx.translate(destCenterX, destCenterY)
   if (config.rotation !== 0) {
     ctx.rotate((config.rotation * Math.PI) / 180)
   }
-  ctx.scale(finalScale, finalScale)
+  const scaleX = config.flipH ? -finalScale : finalScale
+  const scaleY = finalScale
+  ctx.scale(scaleX, scaleY)
   ctx.drawImage(headCanvas, -srcHeadCenterX, -srcHeadCenterY)
   ctx.restore()
 
