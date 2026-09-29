@@ -1932,3 +1932,468 @@ button.active {
   margin-bottom: 12px;
   text-align: center;
 }
+
+/* ============================================================
+   AI GIF 動態圖製作工坊 (GifMaker) 樣式
+   ============================================================ */
+.gifmaker-container {
+  width: 100%;
+  max-width: 960px;
+  margin: 0 auto;
+}
+
+.gifmaker-empty-dropzone {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 380px;
+}
+
+.gifmaker-drop-box {
+  width: 100%;
+  max-width: 680px;
+  background: rgba(15, 23, 42, 0.6);
+  border: 2px dashed rgba(255, 255, 255, 0.18);
+  border-radius: 18px;
+  padding: 48px 24px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.gifmaker-drop-box:hover {
+  border-color: #38bdf8;
+  background: rgba(14, 165, 233, 0.08);
+}
+
+.gifmaker-drop-box .drop-icon {
+  font-size: 54px;
+  margin-bottom: 12px;
+}
+
+.gifmaker-drop-box h3 {
+  font-size: 18px;
+  font-weight: 600;
+  color: #f1f5f9;
+  margin-bottom: 8px;
+}
+
+.gifmaker-drop-box .drop-sub {
+  font-size: 13px;
+  color: #94a3b8;
+  margin-bottom: 20px;
+}
+
+.btn-demo-preset {
+  background: rgba(99, 102, 241, 0.15);
+  border: 1px solid rgba(99, 102, 241, 0.4);
+  color: #a5b4fc;
+  padding: 8px 18px;
+  border-radius: 20px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-demo-preset:hover {
+  background: rgba(99, 102, 241, 0.3);
+  color: #ffffff;
+}
+
+.gifmaker-workspace {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.gifmaker-preview-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  background: #090d16;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 16px;
+  padding: 18px;
+}
+
+.gifmaker-status-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.interpolated-badge {
+  background: rgba(99, 102, 241, 0.2);
+  border: 1px solid rgba(99, 102, 241, 0.4);
+  color: #a5b4fc;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 5px 14px;
+  border-radius: 20px;
+}
+
+.raw-badge {
+  background: rgba(255, 255, 255, 0.08);
+  color: #94a3b8;
+  font-size: 13px;
+  padding: 5px 14px;
+  border-radius: 20px;
+}
+
+.computing-badge {
+  background: rgba(245, 158, 11, 0.15);
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  color: #fbbf24;
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-family: monospace;
+}
+
+.gifmaker-canvas-wrap {
+  width: 100%;
+  max-width: 480px;
+  height: 320px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background: rgba(0, 0, 0, 0.35);
+  border-radius: 12px;
+  overflow: hidden;
+  margin-bottom: 16px;
+}
+
+.gifmaker-preview-canvas {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+}
+
+.gifmaker-playback-controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 16px;
+  width: 100%;
+}
+
+.btn-play-pause {
+  background: #3b82f6;
+  color: #fff;
+  border: none;
+  padding: 8px 18px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.btn-play-pause:hover {
+  background: #2563eb;
+}
+
+.control-slider-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #cbd5e1;
+  font-size: 13px;
+}
+
+.control-slider-group input[type="range"] {
+  width: 120px;
+  accent-color: #38bdf8;
+}
+
+.slider-val {
+  font-family: monospace;
+  font-size: 12px;
+  color: #38bdf8;
+  min-width: 90px;
+}
+
+.mode-toggle-group {
+  display: flex;
+  gap: 4px;
+  background: rgba(255, 255, 255, 0.06);
+  padding: 3px;
+  border-radius: 8px;
+}
+
+.btn-mode-pill {
+  background: transparent;
+  border: none;
+  color: #94a3b8;
+  padding: 5px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-mode-pill.active {
+  background: #475569;
+  color: #fff;
+  font-weight: 600;
+}
+
+.scrub-indicator {
+  font-family: monospace;
+  font-size: 12px;
+  color: #94a3b8;
+}
+
+/* AI 補幀面板 */
+.gifmaker-ai-panel {
+  background: rgba(30, 41, 59, 0.5);
+  border: 1px solid rgba(99, 102, 241, 0.3);
+  border-radius: 14px;
+  padding: 16px 20px;
+}
+
+.ai-panel-header {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 14px;
+}
+
+.switch-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.switch-label input[type="checkbox"] {
+  accent-color: #6366f1;
+  width: 18px;
+  height: 18px;
+}
+
+.switch-text {
+  font-size: 15px;
+  font-weight: 600;
+  color: #e0e7ff;
+}
+
+.ai-desc {
+  font-size: 12px;
+  color: #94a3b8;
+  margin-left: 26px;
+}
+
+.ai-controls-row {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  flex-wrap: wrap;
+  padding-top: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  margin-left: 26px;
+}
+
+.ai-param-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: #cbd5e1;
+}
+
+.ai-param-item input[type="range"] {
+  width: 130px;
+  accent-color: #6366f1;
+}
+
+.param-name {
+  color: #94a3b8;
+  font-weight: 500;
+}
+
+.param-value {
+  font-family: monospace;
+  font-size: 13px;
+  color: #a5b4fc;
+  min-width: 45px;
+}
+
+/* 時間軸與影格序列 */
+.gifmaker-timeline-section {
+  background: #111827;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 16px;
+  padding: 18px;
+}
+
+.timeline-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 14px;
+}
+
+.timeline-title-row h4 {
+  font-size: 15px;
+  color: #f3f4f6;
+  margin-bottom: 2px;
+}
+
+.timeline-hint {
+  font-size: 12px;
+  color: #64748b;
+}
+
+.timeline-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.btn-add-more {
+  background: rgba(56, 189, 248, 0.15);
+  border: 1px solid rgba(56, 189, 248, 0.35);
+  color: #38bdf8;
+  padding: 5px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.btn-add-more:hover {
+  background: rgba(56, 189, 248, 0.25);
+}
+
+.btn-clear-all {
+  background: rgba(239, 68, 68, 0.15);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  color: #fca5a5;
+  padding: 5px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.timeline-frames-track {
+  display: flex;
+  gap: 12px;
+  overflow-x: auto;
+  padding-bottom: 12px;
+}
+
+.timeline-frame-card {
+  flex: 0 0 110px;
+  background: #1e293b;
+  border: 2px solid transparent;
+  border-radius: 10px;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  position: relative;
+  transition: all 0.2s ease;
+}
+
+.timeline-frame-card.keyframe {
+  border-color: rgba(99, 102, 241, 0.35);
+}
+
+.timeline-frame-card:hover {
+  border-color: rgba(56, 189, 248, 0.5);
+}
+
+.timeline-frame-card.current {
+  border-color: #38bdf8;
+  box-shadow: 0 0 10px rgba(56, 189, 248, 0.3);
+}
+
+.frame-badge {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  background: rgba(0, 0, 0, 0.6);
+  color: #cbd5e1;
+  font-size: 10px;
+  font-family: monospace;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.frame-thumb {
+  width: 90px;
+  height: 90px;
+  object-fit: cover;
+  border-radius: 6px;
+  margin-bottom: 8px;
+}
+
+.frame-actions {
+  display: flex;
+  gap: 4px;
+  width: 100%;
+  justify-content: center;
+}
+
+.frame-actions button {
+  background: rgba(255, 255, 255, 0.08);
+  border: none;
+  color: #94a3b8;
+  width: 26px;
+  height: 24px;
+  border-radius: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+}
+
+.frame-actions button:hover:not(:disabled) {
+  background: #334155;
+  color: #fff;
+}
+
+.frame-actions button.btn-del-frame:hover {
+  background: #ef4444;
+  color: #fff;
+}
+
+.gifmaker-export-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.btn-export-gif {
+  background: linear-gradient(135deg, #0ea5e9, #6366f1);
+  color: #fff;
+  border: none;
+  padding: 10px 24px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(14, 165, 233, 0.35);
+  transition: all 0.2s ease;
+}
+
+.btn-export-gif:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 18px rgba(14, 165, 233, 0.5);
+}
+
+.privacy-pill {
+  font-size: 12px;
+  color: #64748b;
+}

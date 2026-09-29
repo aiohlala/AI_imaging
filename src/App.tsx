@@ -4,8 +4,9 @@ import BackgroundRemovalApp from './components/BackgroundRemoval/BackgroundRemov
 import SkinToneApp from './components/SkinTone/SkinToneApp'
 import ImageMergeApp from './components/ImageMerge/ImageMergeApp'
 import HeadSwapApp from './components/HeadSwap/HeadSwapApp'
+import GifMakerApp from './components/GifMaker/GifMakerApp'
 
-type Tab = 'watermark' | 'bg-removal' | 'skintone' | 'merge' | 'head-swap'
+type Tab = 'watermark' | 'bg-removal' | 'skintone' | 'merge' | 'head-swap' | 'gif-maker'
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<Tab>('watermark')
@@ -13,7 +14,7 @@ export default function App() {
   return (
     <div className="app">
       <header className="app-header">
-        {/* 頂部三區塊功能切換導覽列 */}
+        {/* 頂部六大功能切換導覽列 */}
         <nav className="feature-nav" role="tablist" aria-label="功能選擇">
           <button
             type="button"
@@ -65,6 +66,16 @@ export default function App() {
             <span className="tab-icon">🔄</span>
             <span>AI 自動換頭</span>
           </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === 'gif-maker'}
+            className={`nav-tab-btn${activeTab === 'gif-maker' ? ' active' : ''}`}
+            onClick={() => setActiveTab('gif-maker')}
+          >
+            <span className="tab-icon">🎞️</span>
+            <span>AI GIF 製作</span>
+          </button>
         </nav>
 
         <h1>
@@ -73,6 +84,7 @@ export default function App() {
           {activeTab === 'skintone' && 'AI 人像膚色勻稱工具'}
           {activeTab === 'merge' && 'AI 影像無縫合併工具'}
           {activeTab === 'head-swap' && 'AI 人像自動換頭工具'}
+          {activeTab === 'gif-maker' && 'AI GIF 動態圖製作工坊'}
         </h1>
         <p className="subtitle">
           {activeTab === 'watermark' && '純前端處理，支援自由塗抹筆刷與快速框選浮水印'}
@@ -80,11 +92,12 @@ export default function App() {
           {activeTab === 'skintone' && 'AI 自動分離臉部與身體 ＋ OKLab 感官色彩轉移，自然勻稱'}
           {activeTab === 'merge' && '支援無縫拼接（左右/上下自選比例、獨立對位）與 AI 頭身智慧接合'}
           {activeTab === 'head-swap' && '一鍵提取人頭貼合目標身型，全自動等比對齊與膚色光影調和，零歷史紀錄極致隱私'}
+          {activeTab === 'gif-maker' && '多圖序列合成動態 GIF，支援 AI 光流向量智慧平滑補幀，純前端高速生成'}
         </p>
       </header>
 
       <main className="app-main">
-        {/* 保持三者 DOM 狀態獨立且互不干擾 */}
+        {/* 保持六大功能 DOM 狀態獨立且互不干擾 */}
         <div
           role="tabpanel"
           style={{ display: activeTab === 'watermark' ? 'block' : 'none' }}
@@ -119,6 +132,13 @@ export default function App() {
         >
           <HeadSwapApp />
         </div>
+
+        <div
+          role="tabpanel"
+          style={{ display: activeTab === 'gif-maker' ? 'block' : 'none' }}
+        >
+          <GifMakerApp />
+        </div>
       </main>
 
       <footer className="app-footer">
@@ -128,6 +148,7 @@ export default function App() {
           {activeTab === 'skintone' && '使用 MediaPipe 人像語意分割與 OKLab 感官色彩空間，保護個人隱私。'}
           {activeTab === 'merge' && '100% 瀏覽器本機端運算，支援無縫拼接與高精度人像頭身融合。'}
           {activeTab === 'head-swap' && '100% 瀏覽器本機端記憶體運算，零伺服器儲存，關閉或重新整理分頁資料即刻清空。'}
+          {activeTab === 'gif-maker' && '純瀏覽器 TypedArray 運動向量補償與調色盤編碼，零上傳伺服器，極致流暢安全。'}
         </p>
       </footer>
     </div>
