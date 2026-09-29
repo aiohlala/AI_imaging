@@ -23,7 +23,7 @@ export default function AiHeadBodyFusion({
   // 頭部變形控制
   const [headPos, setHeadPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 })
   const [headScale, setHeadScale] = useState(1.0) // 0.4 ~ 2.5
-  const [headRotate, setHeadRotate] = useState(0) // -30 ~ 30 deg
+  const [headRotate, setHeadRotate] = useState(0) // -180 ~ 180 deg
   const [neckFeather, setNeckFeather] = useState(15) // 0 ~ 40px
   const [harmonizeTone, setHarmonizeTone] = useState(false)
 
@@ -275,16 +275,23 @@ export default function AiHeadBodyFusion({
               <span className="brush-value">{Math.round(headScale * 100)}%</span>
             </label>
 
-            <label className="brush-control" title="微調頭部角度">
+            <label className="brush-control" title="微調頭部角度 (-180° ~ 180°，可點擊數值快速歸零)">
               旋轉角度
               <input
                 type="range"
-                min={-30}
-                max={30}
+                min={-180}
+                max={180}
                 value={headRotate}
                 onChange={(e) => setHeadRotate(Number(e.target.value))}
               />
-              <span className="brush-value">{headRotate}°</span>
+              <span
+                className="brush-value"
+                title="點擊快速歸零"
+                onClick={() => setHeadRotate(0)}
+                style={{ cursor: 'pointer' }}
+              >
+                {headRotate}°
+              </span>
             </label>
 
             <label className="brush-control" title="使頸部邊緣與身體更柔和過渡">

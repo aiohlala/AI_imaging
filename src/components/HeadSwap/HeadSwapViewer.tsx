@@ -450,17 +450,24 @@ export default function HeadSwapViewer({
             </button>
 
             {/* 旋轉角度 */}
-            <label className="ctrl-item" title="調整頭部傾斜旋轉角度">
+            <label className="ctrl-item" title="調整頭部旋轉角度 (-180° ~ 180°，可點擊數值快速歸零)">
               <span className="ctrl-name">旋轉角度</span>
               <input
                 type="range"
-                min={-30}
-                max={30}
+                min={-180}
+                max={180}
                 step={1}
                 value={config.rotation}
                 onChange={(e) => setConfig((prev) => ({ ...prev, rotation: Number(e.target.value) }))}
               />
-              <span className="ctrl-val">{config.rotation}°</span>
+              <span
+                className="ctrl-val"
+                title="點擊快速歸零"
+                onClick={() => setConfig((prev) => ({ ...prev, rotation: 0 }))}
+                style={{ cursor: 'pointer' }}
+              >
+                {config.rotation}°
+              </span>
             </label>
 
             {/* 頸部邊緣羽化 */}
