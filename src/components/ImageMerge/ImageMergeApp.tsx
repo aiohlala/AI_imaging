@@ -121,7 +121,7 @@ export default function ImageMergeApp() {
               onClick={handleDownload}
               disabled={!exportCanvas}
             >
-              下載合併成果 ({getBaseName(imageA.name)}_{getBaseName(imageB.name)}_merge.png)
+              下載合併成果 (PNG)
             </button>
           </div>
         </div>

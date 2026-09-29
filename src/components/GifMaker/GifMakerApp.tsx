@@ -364,7 +364,8 @@ export default function GifMakerApp() {
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = `ai_interpolated_${Date.now()}.gif`
+      const firstBase = keyframes[0]?.name ? keyframes[0].name.replace(/\.[^.]+$/, '') : 'animated'
+      a.download = `${firstBase}_ai.gif`
       a.click()
       URL.revokeObjectURL(url)
     } catch (e) {

@@ -599,7 +599,7 @@ export default function BackgroundRemovalApp() {
               換一張圖片
             </button>
             <button type="button" className="primary bg-primary-btn" onClick={handleDownload}>
-              下載成果圖片 ({getBaseName(fileName)}_bgr.png)
+              下載成果圖片 (PNG)
             </button>
           </div>
 

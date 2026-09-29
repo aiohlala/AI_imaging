@@ -200,9 +200,7 @@ export default function ResultView({
           繼續編輯
         </button>
         <button type="button" className="primary" onClick={handleDownload}>
-          {isGif
-            ? `💾 下載動態 GIF (${getBaseName(fileName)}_wr.gif)`
-            : `下載 PNG (${getBaseName(fileName)}_wr.png)`}
+          {isGif ? '💾 下載動態 GIF' : '下載 PNG'}
         </button>
       </div>
     </div>

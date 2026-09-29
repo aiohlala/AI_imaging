@@ -121,7 +121,7 @@ export default function SkinToneResult({
           繼續微調
         </button>
         <button type="button" className="primary skin-primary-btn" onClick={downloadPng}>
-          下載高清 PNG ({getBaseName(fileName)}_st.png)
+          下載成果圖片 (PNG)
         </button>
       </div>
     </div>
