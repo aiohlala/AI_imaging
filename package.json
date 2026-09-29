@@ -8,7 +8,7 @@
     "build": "tsc -b && vite build",
     "lint": "oxlint",
     "preview": "vite preview",
-    "deploy:cf": "npm run build && wrangler pages deploy dist --project-name ai-imaging"
+    "deploy:cf": "npm run build && npx -y wrangler pages deploy dist --project-name ai-imaging"
   },
   "dependencies": {
     "@mediapipe/tasks-vision": "^1.0.1",
