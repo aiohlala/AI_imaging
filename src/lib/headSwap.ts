@@ -32,13 +32,49 @@ export const DEFAULT_HEAD_SWAP_CONFIG: HeadSwapConfig = {
 }
 
 /**
- * 執行即時畫布換頭渲染
+ * 預先計算並調和膚色之頭像畫布 (耗時計算獨立執行並快取)
+ */
+export function prepareHarmonizedHead(
+  headCanvas: HTMLCanvasElement,
+  targetAnalysis: TargetHeadAnalysis,
+  config: HeadSwapConfig,
+): HTMLCanvasElement {
+  if (!config.harmonizeSkin || !targetAnalysis.bodySkinStats) {
+    return headCanvas
+  }
+  try {
+    const dummyMask = document.createElement('canvas')
+    dummyMask.width = headCanvas.width
+    dummyMask.height = headCanvas.height
+    const dmCtx = dummyMask.getContext('2d')!
+    dmCtx.fillStyle = '#fff'
+    dmCtx.fillRect(0, 0, dummyMask.width, dummyMask.height)
+
+    return harmonizeSkinTone(
+      headCanvas,
+      dummyMask,
+      targetAnalysis.bodySkinStats,
+      {
+        strength: config.harmonizeStrength,
+        preserveLighting: 0.85,
+        featherRadius: config.feather,
+      },
+    )
+  } catch (e) {
+    console.warn('Skin tone harmonization fallback', e)
+    return headCanvas
+  }
+}
+
+/**
+ * 執行高畫質換頭合成渲染 (極速 GPU 矩陣運算，無重複分配與耗時濾鏡)
  */
 export function renderHeadSwap(
   targetImage: HTMLImageElement | HTMLCanvasElement,
   headResult: HeadExtractionResult,
   targetAnalysis: TargetHeadAnalysis,
   config: HeadSwapConfig,
+  preHarmonizedHead?: HTMLCanvasElement,
 ): HTMLCanvasElement {
   const targetW = (targetImage as HTMLImageElement).naturalWidth ?? (targetImage as HTMLCanvasElement).width
   const targetH = (targetImage as HTMLImageElement).naturalHeight ?? (targetImage as HTMLCanvasElement).height
@@ -51,47 +87,19 @@ export function renderHeadSwap(
   // 1. 繪製目標底圖 (Image B)
   ctx.drawImage(targetImage, 0, 0, targetW, targetH)
 
-  // 2. 準備頭像畫布 (Image A)
-  let headCanvas = headResult.headCanvas
+  // 2. 準備頭像畫布 (優先使用已快取之調和畫布)
+  const headCanvas = preHarmonizedHead || prepareHarmonizedHead(headResult.headCanvas, targetAnalysis, config)
 
-  // 3. 膚色與光影調和 (若開啟且目標有膚色資訊)
-  if (config.harmonizeSkin && targetAnalysis.bodySkinStats) {
-    try {
-      const dummyMask = document.createElement('canvas')
-      dummyMask.width = headCanvas.width
-      dummyMask.height = headCanvas.height
-      const dmCtx = dummyMask.getContext('2d')!
-      dmCtx.fillStyle = '#fff'
-      dmCtx.fillRect(0, 0, dummyMask.width, dummyMask.height)
-
-      headCanvas = harmonizeSkinTone(
-        headCanvas,
-        dummyMask,
-        targetAnalysis.bodySkinStats,
-        {
-          strength: config.harmonizeStrength,
-          preserveLighting: 0.85,
-          featherRadius: config.feather,
-        },
-      )
-    } catch (e) {
-      console.warn('Skin tone harmonization fallback', e)
-    }
-  }
-
-  // 4. 計算自動幾何縮放比例
-  // 以目標頭部寬度除以來源頭部寬度作為基準縮放比
+  // 3. 計算幾何縮放比例
   const baseScale = targetAnalysis.hasHead && headResult.headBox.width > 0
     ? (targetAnalysis.headBox.width / headResult.headBox.width)
     : (targetW * 0.38) / Math.max(1, headResult.headBox.width)
 
   const finalScale = baseScale * config.scale
 
-  // 來源頭部中心錨點
+  // 4. 來源頭部中心錨點與目標貼合座標
   const srcHeadCenterX = headResult.headBox.x + headResult.headBox.width / 2
   const srcHeadCenterY = headResult.headBox.y + headResult.headBox.height / 2
-
-  // 目標貼合中心座標
   const destCenterX = targetAnalysis.center.x + config.offsetX
   const destCenterY = targetAnalysis.center.y + config.offsetY
 
@@ -102,12 +110,6 @@ export function renderHeadSwap(
     ctx.rotate((config.rotation * Math.PI) / 180)
   }
   ctx.scale(finalScale, finalScale)
-
-  // 邊緣微光影柔化
-  if (config.feather > 0) {
-    ctx.filter = `drop-shadow(0 0 ${Math.round(config.feather * 0.25)}px rgba(0,0,0,0.15))`
-  }
-
   ctx.drawImage(headCanvas, -srcHeadCenterX, -srcHeadCenterY)
   ctx.restore()
 
