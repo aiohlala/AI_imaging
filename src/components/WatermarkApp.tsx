@@ -102,32 +102,6 @@ export default function WatermarkApp() {
     setStatus('done')
   }, [])
 
-  const handleContinueEditing = useCallback(() => {
-    if (result) {
-      result.canvas.toBlob((blob) => {
-        if (!blob) {
-          setStatus('editing')
-          return
-        }
-        const url = URL.createObjectURL(blob)
-        const img = new Image()
-        img.onload = () => {
-          URL.revokeObjectURL(url)
-          setImage(img)
-          const mask = document.createElement('canvas')
-          mask.width = img.naturalWidth
-          mask.height = img.naturalHeight
-          setMaskCanvas(mask)
-          setResult(null)
-          setStatus('editing')
-        }
-        img.src = url
-      })
-    } else {
-      setStatus('editing')
-    }
-  }, [result])
-
   const handleReset = useCallback(() => {
     setMaskCanvas(null)
     setImage(null)
@@ -141,8 +115,8 @@ export default function WatermarkApp() {
     <div className="watermark-app">
       {status === 'empty' && <UploadZone onImageLoaded={handleImageLoaded} />}
 
-      {status === 'editing' && image && maskCanvas && (
-        <>
+      {image && maskCanvas && (
+        <div style={{ display: status === 'editing' ? 'block' : 'none' }}>
           {error && (
             <p className="error-message" role="alert">
               {error}
@@ -161,7 +135,7 @@ export default function WatermarkApp() {
             onCrop={handleCrop}
             onCompleteWithoutInpaint={handleCompleteWithoutInpaint}
           />
-        </>
+        </div>
       )}
 
       {status === 'processing' && (
@@ -198,7 +172,7 @@ export default function WatermarkApp() {
           downscaled={result.downscaled}
           gifContext={gifContext}
           gifResult={result.cleanFrames && result.gifBlob ? { cleanFrames: result.cleanFrames, gifBlob: result.gifBlob } : null}
-          onContinueEditing={handleContinueEditing}
+          onContinueEditing={() => setStatus('editing')}
           onReset={handleReset}
         />
       )}

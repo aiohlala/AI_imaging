@@ -162,8 +162,14 @@ export default function MaskEditor({
     ctx.drawImage(working, 0, 0, displaySize.w, displaySize.h)
   }, [displaySize])
 
-  /** 初始化 workingCanvas */
+  const prevImageRef = useRef<HTMLImageElement | null>(null)
+
+  /** 初始化 workingCanvas（僅在載入新圖片時重設） */
   useEffect(() => {
+    if (prevImageRef.current === image && workingCanvasRef.current) {
+      return
+    }
+    prevImageRef.current = image
     const working = document.createElement('canvas')
     working.width = imgW
     working.height = imgH
@@ -174,8 +180,9 @@ export default function MaskEditor({
     setSourcePoint(null)
     historyRef.current = []
     setHistoryCount(0)
+    setHasMask(maskHasContent(maskCanvas))
     redrawBase()
-  }, [image, imgW, imgH, redrawBase])
+  }, [image, imgW, imgH, maskCanvas, redrawBase])
 
   useEffect(() => {
     redrawBase()
