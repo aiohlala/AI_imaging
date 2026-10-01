@@ -102,6 +102,11 @@ export default function MaskEditor({
   const [isScanning, setIsScanning] = useState(false)
   const [isCropping, setIsCropping] = useState(false)
 
+  // AI 全圖掃描靈敏度與人體排除參數
+  const [scanSensitivity, setScanSensitivity] = useState(50) // 10% ~ 90% (預設 50%)
+  const [excludePerson, setExcludePerson] = useState(true) // 預設排除人體與衣物
+  const [scanZone, setScanZone] = useState<'all' | 'corners'>('all') // 'all' 全圖智慧 vs 'corners' 四邊角台標與字幕
+
   // 克隆圖章 (Clone Stamp) 專屬狀態
   const [cloneSubMode, setCloneSubMode] = useState<'sample' | 'stamp'>('sample')
   const [sourcePoint, setSourcePoint] = useState<Point | null>(null)
@@ -361,16 +366,26 @@ export default function MaskEditor({
     }
   }
 
-  const handleAutoScan = async () => {
+  const handleAutoScan = async (overrideSensitivity?: number | unknown) => {
     setIsScanning(true)
+    const sens = typeof overrideSensitivity === 'number' ? overrideSensitivity : scanSensitivity
     try {
       recordHistory('mask')
-      const count = await autoScanWatermarks(image, maskCanvas)
+      const count = await autoScanWatermarks(image, maskCanvas, {
+        sensitivity: sens,
+        excludePerson,
+        scanZone,
+      })
       if (count > 0) {
         setHasMask(true)
         redrawOverlay()
+        setToastMessage(
+          `⚡ 已自動辨識標記 ${count} 處浮水印（靈敏度 ${sens}%${excludePerson ? '，已避開人體與衣物' : ''}）`,
+        )
       } else {
-        alert('未偵測到明顯的文字浮水印，請點選「🪄 AI 點選圈選」或「🔲 快速框選」直接標記！')
+        alert(
+          `在目前靈敏度 (${sens}%) 下未偵測到明顯的文字浮水印。\n💡 建議：可提高靈敏度（例如「強效 75%」），或使用「🪄 AI 點選圈選」直接點擊標記！`,
+        )
       }
     } catch (e) {
       console.error(e)
@@ -741,9 +756,9 @@ export default function MaskEditor({
           <button
             type="button"
             className="tool-btn ai-magic-btn"
-            onClick={handleAutoScan}
+            onClick={() => handleAutoScan()}
             disabled={isScanning}
-            title="利用電腦視覺演算法自動掃描全圖浮水印與文字"
+            title="利用 AI 與電腦視覺智慧掃描全圖浮水印與文字（自動避開人體與衣物）"
           >
             {isScanning ? '⚡ 掃描中…' : '⚡ AI 全圖掃描'}
           </button>
@@ -871,6 +886,79 @@ export default function MaskEditor({
           )}
         </div>
       </div>
+
+      {/* ---------- AI 浮水印掃描靈敏度與控制列 (drawMode !== 'clone') ---------- */}
+      {drawMode !== 'clone' && (
+        <div className="sliders-bar scan-sliders">
+          {/* AI 掃描靈敏度調節 (與 AI 一鍵去背相同之靈敏度閾值) */}
+          <div
+            className="scan-sensitivity-group"
+            title="調整 AI 全圖掃描判定靈敏度：較低值更嚴格精確，較高值可抓取淡色水印"
+          >
+            <label className="brush-control">
+              AI 掃描靈敏度
+              <input
+                type="range"
+                min={10}
+                max={90}
+                step={5}
+                value={scanSensitivity}
+                onChange={(e) => setScanSensitivity(Number(e.target.value))}
+              />
+              <span className="brush-value">{scanSensitivity}%</span>
+            </label>
+            <div className="preset-chips">
+              {[
+                { label: '精確 25%', val: 25 },
+                { label: '標準 50%', val: 50 },
+                { label: '強效 75%', val: 75 },
+              ].map((item) => (
+                <button
+                  key={item.val}
+                  type="button"
+                  className={`chip-btn${scanSensitivity === item.val ? ' active' : ''}`}
+                  onClick={() => setScanSensitivity(item.val)}
+                >
+                  {item.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* 排除人體與衣物保護開關 */}
+          <label
+            className="checkbox-control"
+            title="啟用 MediaPipe AI 人像神經網絡保護：嚴格避開人臉、皮膚、頭髮與衣服，絕不將人體視為浮水印"
+          >
+            <input
+              type="checkbox"
+              checked={excludePerson}
+              onChange={(e) => setExcludePerson(e.target.checked)}
+            />
+            <span>👤 排除人體與衣物</span>
+          </label>
+
+          {/* 掃描範圍過濾 */}
+          <div className="scan-zone-group" role="group" aria-label="掃描範圍">
+            <button
+              type="button"
+              className={`chip-btn${scanZone === 'all' ? ' active' : ''}`}
+              onClick={() => setScanZone('all')}
+              title="全圖智慧掃描各處文字、商標與浮水印"
+            >
+              🌐 全圖偵測
+            </button>
+            <button
+              type="button"
+              className={`chip-btn${scanZone === 'corners' ? ' active' : ''}`}
+              onClick={() => setScanZone('corners')}
+              title="聚焦圖片四角台標與底部字幕區，徹底消除中央非水印干擾"
+            >
+              🎯 邊角台標與字幕
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* ---------- 克隆圖章 (Clone Stamp) 專屬獨立操作控制列 ---------- */}
       {drawMode === 'clone' && (
