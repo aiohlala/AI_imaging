@@ -541,6 +541,42 @@ button.active {
   font-weight: 600;
 }
 
+.clone-transform-group {
+  display: inline-flex;
+  gap: 0.35rem;
+  align-items: center;
+}
+
+.clone-toggle-btn {
+  padding: 0.35rem 0.7rem;
+  font-size: 0.82rem;
+  font-weight: 500;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-dim);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  transition: all 0.18s ease;
+  white-space: nowrap;
+}
+
+.clone-toggle-btn:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+.clone-toggle-btn.active {
+  background: rgba(2, 132, 199, 0.28);
+  border-color: #38bdf8;
+  color: #38bdf8;
+  font-weight: 600;
+  box-shadow: 0 0 10px rgba(56, 189, 248, 0.35);
+}
+
 .checkbox-control {
   display: flex;
   align-items: center;

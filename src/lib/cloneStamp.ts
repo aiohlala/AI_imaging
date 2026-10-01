@@ -1,11 +1,20 @@
 /**
  * 克隆圖章 (Clone Stamp) 核心演算法與繪製引擎
- * 支援大小調節、柔邊 (Feathering / 邊緣羽化)、不透明度、連動對齊與手機觸控最佳化。
+ * 支援大小調節、柔邊 (Feathering / 邊緣羽化)、不透明度、鏡像翻轉 (Flip)、旋轉角度 (Rotation)、連動對齊與手機觸控最佳化。
  */
 
 export interface Point {
   x: number
   y: number
+}
+
+export interface CloneStampTransform {
+  /** 水平鏡像翻轉 */
+  flipH?: boolean
+  /** 垂直鏡像翻轉 */
+  flipV?: boolean
+  /** 旋轉角度 (-180° ~ 180°) */
+  angle?: number
 }
 
 export interface CloneStampOptions {
@@ -17,6 +26,34 @@ export interface CloneStampOptions {
   opacity: number
   /** 是否開啟連動對齊模式 */
   aligned: boolean
+  /** 鏡像翻轉與旋轉變形參數 */
+  transform?: CloneStampTransform
+}
+
+/**
+ * 依據旋轉角度與鏡像翻轉，將目標移動量映射至來源取樣點的位移量
+ * 確保塗抹筆劃時，鏡像與旋轉效果在筆劃軌跡上連續且無縫平滑
+ */
+export function calculateSourceOffset(
+  deltaTarget: Point,
+  transform?: CloneStampTransform,
+): Point {
+  const flipH = transform?.flipH ? -1 : 1
+  const flipV = transform?.flipV ? -1 : 1
+  const angleDeg = transform?.angle || 0
+  const rad = (angleDeg * Math.PI) / 180
+
+  // 1. 鏡像翻轉
+  const dx = deltaTarget.x * flipH
+  const dy = deltaTarget.y * flipV
+
+  // 2. 角度旋轉
+  const cos = Math.cos(rad)
+  const sin = Math.sin(rad)
+  const sx = dx * cos - dy * sin
+  const sy = dx * sin + dy * cos
+
+  return { x: sx, y: sy }
 }
 
 /**
@@ -106,7 +143,7 @@ export class CloneStampEngine {
   }
 
   /**
-   * 繪製單個羽化圓形克隆印記
+   * 繪製單個羽化圓形克隆印記（支援鏡像與旋轉）
    */
   stampDab(
     sourceCanvas: HTMLCanvasElement,
@@ -116,6 +153,7 @@ export class CloneStampEngine {
     radius: number,
     feather: number,
     opacity: number,
+    transform?: CloneStampTransform,
   ) {
     if (radius <= 0) return
     const diameter = Math.max(2, Math.ceil(radius * 2))
@@ -127,10 +165,10 @@ export class CloneStampEngine {
     const bCtx = this.brushCtx
     bCtx.clearRect(0, 0, diameter, diameter)
 
-    // 1. 安全抓取來源紋理切片
+    // 1. 安全抓取來源紋理切片至臨時筆刷畫布
     drawSourcePatchSafely(bCtx, sourceCanvas, sourceCenter.x, sourceCenter.y, radius, diameter)
 
-    // 2. 利用 destination-in 套用柔邊羽化遮罩
+    // 2. 利用 destination-in 套用柔邊羽化遮罩（圓形遮罩具備對稱性）
     bCtx.save()
     bCtx.globalCompositeOperation = 'destination-in'
     bCtx.fillStyle = createFeatherGradient(bCtx, radius, feather)
@@ -139,27 +177,44 @@ export class CloneStampEngine {
     bCtx.fill()
     bCtx.restore()
 
-    // 3. 合成至目標影像畫布
+    // 3. 合成至目標影像畫布（套用鏡像縮放與旋轉）
     const tCtx = targetCanvas.getContext('2d')!
     tCtx.save()
     tCtx.globalAlpha = Math.max(0.01, Math.min(1, opacity))
     tCtx.globalCompositeOperation = 'source-over'
-    tCtx.drawImage(this.brushCanvas, targetCenter.x - radius, targetCenter.y - radius)
+
+    // 平移至目標中心點
+    tCtx.translate(targetCenter.x, targetCenter.y)
+
+    const angleDeg = transform?.angle || 0
+    if (angleDeg !== 0) {
+      tCtx.rotate((angleDeg * Math.PI) / 180)
+    }
+
+    const flipH = !!transform?.flipH
+    const flipV = !!transform?.flipV
+    if (flipH || flipV) {
+      tCtx.scale(flipH ? -1 : 1, flipV ? -1 : 1)
+    }
+
+    tCtx.drawImage(this.brushCanvas, -radius, -radius)
     tCtx.restore()
   }
 
   /**
-   * 平滑路徑插值並連續印製筆觸
+   * 平滑路徑插值並連續印製筆觸（支援鏡像與旋轉連續取樣）
    */
   strokeSegment(
     sourceCanvas: HTMLCanvasElement,
     targetCanvas: HTMLCanvasElement,
     prevTarget: Point,
     currTarget: Point,
-    offset: Point, // offset = source - target
+    strokeStartTarget: Point,
+    strokeStartSource: Point,
     radius: number,
     feather: number,
     opacity: number,
+    transform?: CloneStampTransform,
   ) {
     const dist = Math.hypot(currTarget.x - prevTarget.x, currTarget.y - prevTarget.y)
     // 步進距離：半徑的 15%~20%，避免過密影響效能或過疏出現跳點
@@ -170,8 +225,17 @@ export class CloneStampEngine {
       const t = i / steps
       const tx = prevTarget.x + (currTarget.x - prevTarget.x) * t
       const ty = prevTarget.y + (currTarget.y - prevTarget.y) * t
-      const sx = tx + offset.x
-      const sy = ty + offset.y
+
+      // 計算相對於筆劃起點的目標位移
+      const deltaTarget = {
+        x: tx - strokeStartTarget.x,
+        y: ty - strokeStartTarget.y,
+      }
+      // 根據鏡像與旋轉映射至來源位移
+      const deltaSource = calculateSourceOffset(deltaTarget, transform)
+      const sx = strokeStartSource.x + deltaSource.x
+      const sy = strokeStartSource.y + deltaSource.y
+
       this.stampDab(
         sourceCanvas,
         targetCanvas,
@@ -180,12 +244,13 @@ export class CloneStampEngine {
         radius,
         feather,
         opacity,
+        transform,
       )
     }
   }
 
   /**
-   * 繪製高辨識度取樣點準星錨點 (支援手機直接按壓拖曳)
+   * 繪製高辨識度取樣點準星錨點 (支援手機直接按壓拖曳與變形標籤)
    */
   drawSourceMarker(
     ctx: CanvasRenderingContext2D,
@@ -193,6 +258,7 @@ export class CloneStampEngine {
     scaleX: number,
     scaleY: number,
     isDragging = false,
+    transform?: CloneStampTransform,
   ) {
     const x = point.x * scaleX
     const y = point.y * scaleY
@@ -257,8 +323,22 @@ export class CloneStampEngine {
     ctx.fillStyle = isDragging ? '#38bdf8' : '#ffffff'
     ctx.fill()
 
-    // 3. 標籤膠囊 (提示取樣點與拖曳)
-    const label = isDragging ? '🎯 移動中…' : '🎯 取樣點'
+    // 3. 標籤膠囊 (提示取樣點、鏡像與旋轉角度)
+    const angleDeg = transform?.angle || 0
+    const flipH = !!transform?.flipH
+    const flipV = !!transform?.flipV
+    const transTags = [
+      flipH ? '↔' : '',
+      flipV ? '↕' : '',
+      angleDeg !== 0 ? `${angleDeg}°` : '',
+    ].filter(Boolean).join(' ')
+
+    const label = isDragging
+      ? '🎯 移動中…'
+      : transTags
+        ? `🎯 取樣點 (${transTags})`
+        : '🎯 取樣點'
+
     ctx.font = 'bold 11px system-ui, sans-serif'
     const textMetrics = ctx.measureText(label)
     const paddingX = 7
@@ -284,7 +364,7 @@ export class CloneStampEngine {
   }
 
   /**
-   * 繪製目標筆刷預覽圈（包含柔邊邊界與實心邊界）
+   * 繪製目標筆刷預覽圈（包含柔邊邊界與鏡像/旋轉指向）
    */
   drawBrushPreview(
     ctx: CanvasRenderingContext2D,
@@ -293,6 +373,7 @@ export class CloneStampEngine {
     scaleY: number,
     radius: number,
     feather: number,
+    transform?: CloneStampTransform,
   ) {
     const x = target.x * scaleX
     const y = target.y * scaleY
@@ -329,11 +410,60 @@ export class CloneStampEngine {
       }
     }
 
-    // 中心微十字
-    ctx.beginPath()
-    ctx.arc(x, y, 1.5, 0, Math.PI * 2)
-    ctx.fillStyle = '#ffffff'
-    ctx.fill()
+    // 3. 角度旋轉指向與鏡像視覺標示
+    const angleDeg = transform?.angle || 0
+    const flipH = !!transform?.flipH
+    const flipV = !!transform?.flipV
+
+    if (angleDeg !== 0 || flipH || flipV) {
+      const rad = (angleDeg * Math.PI) / 180
+      const cos = Math.cos(rad)
+      const sin = Math.sin(rad)
+      const arrowLen = Math.max(8, r * 0.75)
+
+      // 箭頭方向中心線
+      ctx.beginPath()
+      ctx.moveTo(x - arrowLen * 0.4 * cos, y - arrowLen * 0.4 * sin)
+      ctx.lineTo(x + arrowLen * cos, y + arrowLen * sin)
+      ctx.strokeStyle = '#38bdf8'
+      ctx.lineWidth = 2
+      ctx.stroke()
+
+      // 箭頭尖端
+      const tipX = x + arrowLen * cos
+      const tipY = y + arrowLen * sin
+      const headLen = 6
+      ctx.beginPath()
+      ctx.moveTo(tipX, tipY)
+      ctx.lineTo(
+        tipX - headLen * Math.cos(rad - Math.PI / 6),
+        tipY - headLen * Math.sin(rad - Math.PI / 6),
+      )
+      ctx.moveTo(tipX, tipY)
+      ctx.lineTo(
+        tipX - headLen * Math.cos(rad + Math.PI / 6),
+        tipY - headLen * Math.sin(rad + Math.PI / 6),
+      )
+      ctx.strokeStyle = '#38bdf8'
+      ctx.lineWidth = 2
+      ctx.stroke()
+
+      // 鏡像標籤標示在筆刷圈外側
+      if (flipH || flipV) {
+        ctx.font = 'bold 10px system-ui, sans-serif'
+        ctx.fillStyle = '#38bdf8'
+        ctx.textAlign = 'center'
+        ctx.textBaseline = 'bottom'
+        const mirrorTag = (flipH ? '↔' : '') + (flipV ? '↕' : '')
+        ctx.fillText(mirrorTag, x, y - r - 3)
+      }
+    } else {
+      // 中心微十字
+      ctx.beginPath()
+      ctx.arc(x, y, 1.5, 0, Math.PI * 2)
+      ctx.fillStyle = '#ffffff'
+      ctx.fill()
+    }
 
     ctx.restore()
   }

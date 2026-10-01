@@ -1,7 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { autoScanWatermarks, smartClickWatermark } from '../lib/watermarkDetector'
 import ImageCropperModal from './ImageCropperModal'
-import { CloneStampEngine, type Point } from '../lib/cloneStamp'
+import {
+  CloneStampEngine,
+  calculateSourceOffset,
+  type Point,
+  type CloneStampTransform,
+} from '../lib/cloneStamp'
 
 const MIN_BRUSH = 5
 const MAX_BRUSH = 300
@@ -104,6 +109,9 @@ export default function MaskEditor({
   const [cloneFeather, setCloneFeather] = useState(50) // 0% ~ 100%
   const [cloneOpacity, setCloneOpacity] = useState(100) // 10% ~ 100%
   const [cloneAligned, setCloneAligned] = useState(true)
+  const [cloneFlipH, setCloneFlipH] = useState(false) // 水平鏡像
+  const [cloneFlipV, setCloneFlipV] = useState(false) // 垂直鏡像
+  const [cloneAngle, setCloneAngle] = useState(0) // 旋轉角度 (-180° ~ 180°)
   const [hasImageEdits, setHasImageEdits] = useState(false)
   const [isAltPressed, setIsAltPressed] = useState(false)
   const [toastMessage, setToastMessage] = useState<string | null>(null)
@@ -122,13 +130,15 @@ export default function MaskEditor({
   const drawingRef = useRef(false)
   const isDraggingSourceRef = useRef(false)
   const isStampingRef = useRef(false)
-  const cloneOffsetRef = useRef<Point>({ x: 0, y: 0 })
+  const strokeStartTargetRef = useRef<Point | null>(null)
+  const strokeStartSourceRef = useRef<Point | null>(null)
   const currentMovingSourceRef = useRef<Point | null>(null)
   const hoverPointRef = useRef<Point | null>(null)
   const currentStrokeRef = useRef<Stroke | null>(null)
   const lastPointRef = useRef<Point | null>(null)
   const startPointRef = useRef<Point | null>(null)
   const currentDragPointRef = useRef<Point | null>(null)
+
 
   const imgW = image.naturalWidth
   const imgH = image.naturalHeight
@@ -235,6 +245,11 @@ export default function MaskEditor({
 
       // (a) 取樣點準星錨點
       const activeSource = currentMovingSourceRef.current || sourcePoint
+      const currentTransform: CloneStampTransform = {
+        flipH: cloneFlipH,
+        flipV: cloneFlipV,
+        angle: cloneAngle,
+      }
       if (activeSource) {
         engine.drawSourceMarker(
           ctx,
@@ -242,6 +257,7 @@ export default function MaskEditor({
           scaleX,
           scaleY,
           isDraggingSourceRef.current,
+          currentTransform,
         )
       }
 
@@ -265,6 +281,7 @@ export default function MaskEditor({
           scaleY,
           cloneSize / 2,
           cloneFeather / 100,
+          currentTransform,
         )
       }
     }
@@ -278,6 +295,9 @@ export default function MaskEditor({
     sourcePoint,
     cloneSize,
     cloneFeather,
+    cloneFlipH,
+    cloneFlipV,
+    cloneAngle,
     isAltPressed,
   ])
 
@@ -437,21 +457,28 @@ export default function MaskEditor({
         sCtx.drawImage(working, 0, 0)
       }
 
-      // 計算 offset: source = target + offset
-      const offset: Point = { x: sourcePoint.x - p.x, y: sourcePoint.y - p.y }
-      cloneOffsetRef.current = offset
-      currentMovingSourceRef.current = { x: p.x + offset.x, y: p.y + offset.y }
+      // 記錄此筆劃起點，用於旋轉與鏡像座標映射
+      strokeStartTargetRef.current = p
+      strokeStartSourceRef.current = sourcePoint
+      currentMovingSourceRef.current = sourcePoint
+
+      const currentTransform: CloneStampTransform = {
+        flipH: cloneFlipH,
+        flipV: cloneFlipV,
+        angle: cloneAngle,
+      }
 
       // 蓋印第一筆
       if (sourceSnapshotRef.current && working) {
         cloneEngineRef.current.stampDab(
           sourceSnapshotRef.current,
           working,
-          currentMovingSourceRef.current,
+          sourcePoint,
           p,
           cloneSize / 2,
           cloneFeather / 100,
           cloneOpacity / 100,
+          currentTransform,
         )
         setHasImageEdits(true)
         redrawBase()
@@ -492,10 +519,22 @@ export default function MaskEditor({
         return
       }
 
-      if (isStampingRef.current && lastPointRef.current) {
-        const offset = cloneOffsetRef.current
+      if (
+        isStampingRef.current &&
+        lastPointRef.current &&
+        strokeStartTargetRef.current &&
+        strokeStartSourceRef.current
+      ) {
         const working = workingCanvasRef.current
         const snap = sourceSnapshotRef.current
+        const startTarget = strokeStartTargetRef.current
+        const startSource = strokeStartSourceRef.current
+        const currentTransform: CloneStampTransform = {
+          flipH: cloneFlipH,
+          flipV: cloneFlipV,
+          angle: cloneAngle,
+        }
+
         if (working && snap) {
           const events = e.nativeEvent.getCoalescedEvents?.() ?? [e.nativeEvent]
           let prev = lastPointRef.current
@@ -510,15 +549,22 @@ export default function MaskEditor({
               working,
               prev,
               pt,
-              offset,
+              startTarget,
+              startSource,
               cloneSize / 2,
               cloneFeather / 100,
               cloneOpacity / 100,
+              currentTransform,
             )
             prev = pt
           }
           lastPointRef.current = prev
-          currentMovingSourceRef.current = { x: prev.x + offset.x, y: prev.y + offset.y }
+          const deltaEnd = { x: prev.x - startTarget.x, y: prev.y - startTarget.y }
+          const deltaSourceEnd = calculateSourceOffset(deltaEnd, currentTransform)
+          currentMovingSourceRef.current = {
+            x: startSource.x + deltaSourceEnd.x,
+            y: startSource.y + deltaSourceEnd.y,
+          }
           setHasImageEdits(true)
           redrawBase()
         }
@@ -578,6 +624,8 @@ export default function MaskEditor({
           // 連動對齊：取樣點更新至筆劃結尾的來源位置
           setSourcePoint({ ...currentMovingSourceRef.current })
         }
+        strokeStartTargetRef.current = null
+        strokeStartSourceRef.current = null
         currentMovingSourceRef.current = null
         lastPointRef.current = null
         redrawOverlay()
@@ -927,6 +975,61 @@ export default function MaskEditor({
               <span className="brush-value">{cloneOpacity}%</span>
             </label>
 
+            {/* 鏡像翻轉 (水平 / 垂直) */}
+            <div className="clone-transform-group" role="group" aria-label="取樣鏡像翻轉">
+              <button
+                type="button"
+                className={`clone-toggle-btn${cloneFlipH ? ' active' : ''}`}
+                onClick={() => setCloneFlipH((v) => !v)}
+                title="水平鏡像翻轉：將取樣紋理左右顛倒複製（適合對稱材質或左右對稱修復）"
+              >
+                ↔️ 水平鏡像
+              </button>
+              <button
+                type="button"
+                className={`clone-toggle-btn${cloneFlipV ? ' active' : ''}`}
+                onClick={() => setCloneFlipV((v) => !v)}
+                title="垂直鏡像翻轉：將取樣紋理上下顛倒複製（適合水面倒影或上下對稱修復）"
+              >
+                ↕️ 垂直鏡像
+              </button>
+            </div>
+
+            {/* 角度旋轉調節 (-180° ~ 180°) */}
+            <div className="clone-param-group clone-angle-group" title="調整取樣紋理的旋轉角度 (-180° ~ 180°)">
+              <label className="brush-control">
+                旋轉角度
+                <input
+                  type="range"
+                  min={-180}
+                  max={180}
+                  step={5}
+                  value={cloneAngle}
+                  onChange={(e) => setCloneAngle(Number(e.target.value))}
+                />
+                <span className="brush-value">{cloneAngle}°</span>
+              </label>
+              <div className="preset-chips">
+                {[
+                  { label: '-90°', val: -90 },
+                  { label: '-45°', val: -45 },
+                  { label: '0° 重設', val: 0 },
+                  { label: '+45°', val: 45 },
+                  { label: '+90°', val: 90 },
+                  { label: '180°', val: 180 },
+                ].map((item) => (
+                  <button
+                    key={item.val}
+                    type="button"
+                    className={`chip-btn${cloneAngle === item.val ? ' active' : ''}`}
+                    onClick={() => setCloneAngle(item.val)}
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
             {/* 連動對齊開關 */}
             <label
               className="checkbox-control"
@@ -947,7 +1050,17 @@ export default function MaskEditor({
             <span className="tip-text">
               {cloneSubMode === 'sample' || !sourcePoint
                 ? '請點擊畫面上乾淨無水印的紋理作為取樣點 (電腦版可隨時按住 Alt 鍵點擊)'
-                : '手機觸控：直接塗抹浮水印即可無痕覆蓋！也可直接用手指按住 🎯 準心拖曳換位。'}
+                : `手機觸控：直接塗抹浮水印即可無痕覆蓋！也可直接用手指按住 🎯 準心拖曳換位。${
+                    cloneFlipH || cloneFlipV || cloneAngle !== 0
+                      ? ` 【已套用: ${[
+                          cloneFlipH ? '水平鏡像 ↔' : '',
+                          cloneFlipV ? '垂直鏡像 ↕' : '',
+                          cloneAngle !== 0 ? `旋轉 ${cloneAngle}°` : '',
+                        ]
+                          .filter(Boolean)
+                          .join('、')}】`
+                      : ''
+                  }`}
             </span>
             {sourcePoint && (
               <button
