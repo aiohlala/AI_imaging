@@ -50,13 +50,14 @@ export default function WatermarkApp() {
     }
   }, [])
 
-  const handleProcess = useCallback(async () => {
+  const handleProcess = useCallback(async (workingCanvas?: HTMLCanvasElement) => {
     if (!image || !maskCanvas || processingRef.current) return
     processingRef.current = true
     setError(null)
     setStatus('processing')
 
     try {
+      const sourceImage = workingCanvas || image
       if (gifContext && gifContext.frames.length > 1) {
         // GIF 逐幀 ROI Inpainting 流程
         setGifProgress({ current: 1, total: gifContext.frames.length })
@@ -72,8 +73,8 @@ export default function WatermarkApp() {
           downscaled: gifRes.downscaled,
         })
       } else {
-        // 常規靜態圖片 Inpaint 流程
-        const res = await inpaint(image, maskCanvas)
+        // 常規靜態圖片 Inpaint 流程 (採用可能經克隆圖章修復後的 workingCanvas 作為底圖)
+        const res = await inpaint(sourceImage, maskCanvas)
         setResult(res)
       }
       setStatus('done')
@@ -86,6 +87,46 @@ export default function WatermarkApp() {
       setGifProgress(null)
     }
   }, [image, maskCanvas, gifContext])
+
+  /** 僅使用克隆圖章修復、無標記遮罩時直接完成並檢視對比成果 */
+  const handleCompleteWithoutInpaint = useCallback((finalCanvas: HTMLCanvasElement) => {
+    const resCanvas = document.createElement('canvas')
+    resCanvas.width = finalCanvas.width
+    resCanvas.height = finalCanvas.height
+    const ctx = resCanvas.getContext('2d')!
+    ctx.drawImage(finalCanvas, 0, 0)
+    setResult({
+      canvas: resCanvas,
+      downscaled: false,
+    })
+    setStatus('done')
+  }, [])
+
+  const handleContinueEditing = useCallback(() => {
+    if (result) {
+      result.canvas.toBlob((blob) => {
+        if (!blob) {
+          setStatus('editing')
+          return
+        }
+        const url = URL.createObjectURL(blob)
+        const img = new Image()
+        img.onload = () => {
+          URL.revokeObjectURL(url)
+          setImage(img)
+          const mask = document.createElement('canvas')
+          mask.width = img.naturalWidth
+          mask.height = img.naturalHeight
+          setMaskCanvas(mask)
+          setResult(null)
+          setStatus('editing')
+        }
+        img.src = url
+      })
+    } else {
+      setStatus('editing')
+    }
+  }, [result])
 
   const handleReset = useCallback(() => {
     setMaskCanvas(null)
@@ -118,6 +159,7 @@ export default function WatermarkApp() {
             onProcess={handleProcess}
             onBack={handleReset}
             onCrop={handleCrop}
+            onCompleteWithoutInpaint={handleCompleteWithoutInpaint}
           />
         </>
       )}
@@ -156,7 +198,7 @@ export default function WatermarkApp() {
           downscaled={result.downscaled}
           gifContext={gifContext}
           gifResult={result.cleanFrames && result.gifBlob ? { cleanFrames: result.cleanFrames, gifBlob: result.gifBlob } : null}
-          onContinueEditing={() => setStatus('editing')}
+          onContinueEditing={handleContinueEditing}
           onReset={handleReset}
         />
       )}

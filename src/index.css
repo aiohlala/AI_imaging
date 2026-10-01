@@ -447,6 +447,198 @@ button.active {
   cursor: copy;
 }
 
+/* ---------- 克隆圖章 (Clone Stamp) 專屬樣式 ---------- */
+
+.clone-toolbar-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  margin-bottom: 0.75rem;
+  padding: 0.75rem 0.95rem;
+  background: var(--bg-elevated);
+  border: 1px solid rgba(56, 189, 248, 0.3);
+  border-radius: 10px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+  animation: fadeIn 0.2s ease;
+}
+
+.clone-controls-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1.25rem;
+  align-items: center;
+}
+
+.clone-submode-group {
+  display: inline-flex;
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid var(--border);
+  padding: 3px;
+  border-radius: 8px;
+  gap: 3px;
+}
+
+.clone-mode-btn {
+  padding: 0.4rem 0.85rem;
+  font-size: 0.85rem;
+  font-weight: 500;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: all 0.18s ease;
+  white-space: nowrap;
+}
+
+.clone-mode-btn:hover:not(.active) {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.clone-mode-btn.active {
+  background: #0284c7;
+  color: #fff;
+  border-color: #38bdf8;
+  box-shadow: 0 2px 8px rgba(2, 132, 199, 0.45);
+}
+
+.clone-param-group {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: nowrap;
+}
+
+.preset-chips {
+  display: flex;
+  gap: 0.25rem;
+  align-items: center;
+}
+
+.chip-btn {
+  padding: 0.2rem 0.45rem;
+  font-size: 0.75rem;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.chip-btn:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.25);
+}
+
+.chip-btn.active {
+  color: #38bdf8;
+  border-color: #0284c7;
+  background: rgba(2, 132, 199, 0.2);
+  font-weight: 600;
+}
+
+.checkbox-control {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.85rem;
+  color: var(--text);
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.checkbox-control input[type='checkbox'] {
+  width: 16px;
+  height: 16px;
+  accent-color: #0284c7;
+  cursor: pointer;
+}
+
+.clone-tip-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  padding: 0.45rem 0.8rem;
+  background: rgba(14, 165, 233, 0.1);
+  border: 1px solid rgba(56, 189, 248, 0.22);
+  border-radius: 6px;
+  font-size: 0.82rem;
+  color: #e0f2fe;
+}
+
+.clone-tip-banner .tip-icon {
+  font-size: 1rem;
+  flex-shrink: 0;
+}
+
+.clone-tip-banner .tip-text {
+  flex: 1;
+  line-height: 1.4;
+}
+
+.resample-btn {
+  padding: 0.25rem 0.65rem;
+  font-size: 0.78rem;
+  background: rgba(56, 189, 248, 0.15);
+  border: 1px solid rgba(56, 189, 248, 0.4);
+  color: #bae6fd;
+  border-radius: 4px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s ease;
+}
+
+.resample-btn:hover {
+  background: rgba(56, 189, 248, 0.3);
+  color: #fff;
+}
+
+.clone-toast {
+  text-align: center;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: #38bdf8;
+  background: rgba(15, 23, 42, 0.95);
+  border: 1px solid rgba(56, 189, 248, 0.4);
+  padding: 0.4rem 1rem;
+  border-radius: 20px;
+  margin: 0.4rem auto;
+  width: fit-content;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  animation: fadeIn 0.2s ease;
+}
+
+.btn-revert {
+  background: rgba(239, 68, 68, 0.12) !important;
+  border-color: rgba(239, 68, 68, 0.35) !important;
+  color: #fca5a5 !important;
+}
+
+.btn-revert:hover {
+  background: rgba(239, 68, 68, 0.25) !important;
+  color: #fff !important;
+}
+
+.clone-finish-btn {
+  background: linear-gradient(135deg, #0284c7 0%, #2563eb 100%) !important;
+  border-color: #38bdf8 !important;
+  box-shadow: 0 4px 16px rgba(2, 132, 199, 0.4) !important;
+}
+
+.overlay-canvas.clone-sampling {
+  cursor: crosshair !important;
+}
+
+.overlay-canvas.clone-stamping {
+  cursor: crosshair;
+}
+
 .action-bar {
   display: flex;
   gap: 0.75rem;
@@ -729,6 +921,42 @@ button.active {
   .action-bar button {
     width: 100%;
     padding: 0.7rem 1rem;
+  }
+
+  .clone-controls-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.65rem;
+  }
+
+  .clone-submode-group {
+    width: 100%;
+  }
+
+  .clone-mode-btn {
+    flex: 1;
+    text-align: center;
+    padding: 0.55rem 0.5rem;
+    font-size: 0.9rem;
+  }
+
+  .clone-param-group {
+    flex-wrap: wrap;
+    justify-content: space-between;
+  }
+
+  .clone-param-group .brush-control {
+    flex: 1;
+  }
+
+  .clone-tip-banner {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
+  }
+
+  .resample-btn {
+    align-self: flex-end;
   }
 }
 
